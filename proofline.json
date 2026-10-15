@@ -1,0 +1,693 @@
+{
+  "schema": "proofline/1",
+  "project": "agentkey",
+  "owner_rules": [
+    "Done means ALL evidence: implemented as specified (task id), a test that FAILED before and passes now, suites green, measured number vs target, docs regenerated, committed AND pushed to main.",
+    "Never defer: no \"later\", \"follow-up\", \"out of scope\". If blocked: what blocks, what you tried, what you need; then continue with the next task.",
+    "Root cause, then fix: file:line + mechanism. No weakening tests, raising timeouts, skips, relaxed assertions.",
+    "No silent scope cuts: never lower targets, caps or test sizes without owner approval.",
+    "Never bypass guards: no --no-verify, no bypass env vars, no skip flags.",
+    "Deliver continuously: one task per commit, pushed to main as it goes green.",
+    "Honest reporting: TASK-ID | status | commit | tests | measured vs target | missing.",
+    "A receipt never overclaims: ran:false is reported as not run, never as pass (ZR-11)."
+  ],
+  "defaults": {
+    "base": "origin/main",
+    "branch": "main",
+    "flaky_reruns": 1,
+    "max_corrective_cycles": 3,
+    "regression_tolerance_pct": 20,
+    "reuse_results": true,
+    "reuse_max_age_h": 24,
+    "owners": [
+      "lane-a",
+      "lane-b",
+      "lane-c"
+    ]
+  },
+  "forbidden": {
+    "test_skip_only": true,
+    "timeout_raise": true,
+    "assertion_removal": true,
+    "test_file_deletion": true,
+    "no_verify": true,
+    "bypass_env": [
+      "HIVEVAULT_ALLOW_PUBLIC_PUSH",
+      "SKIP_HOOKS",
+      "HUSKY=0",
+      "PROOFLINE_SKIP",
+      "CI_SKIP"
+    ],
+    "protected_values": []
+  },
+  "baseline": {
+    "metrics": {}
+  },
+  "phases": [
+    {
+      "id": "intake"
+    },
+    {
+      "id": "design"
+    },
+    {
+      "id": "plan"
+    },
+    {
+      "id": "implement"
+    },
+    {
+      "id": "verify"
+    },
+    {
+      "id": "integrate"
+    },
+    {
+      "id": "release"
+    },
+    {
+      "id": "monitor"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "AK-00",
+      "title": "Bootstrap the repository so proofline has a base",
+      "phase": "plan",
+      "owner": "lane-b",
+      "depends_on": [],
+      "requirements": [
+        "ID-03"
+      ],
+      "description": "Create mgillr/agentkey (private until AK-06). `git init -b main`; commit proofline.json (this contract), LICENSE (Apache-2.0), NOTICE, package.json (name agentkey, version 0.1.0-next.0, type module, engines node>=22, bin, files), README.md (one paragraph), .gitignore; push origin main. Then `proofline init` installs the hooks and `proofline next --owner lane-b` pins the base for AK-01.",
+      "scope": {
+        "allow": [
+          "**"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-00-AC01",
+          "mandatory": true,
+          "statement": "contract committed",
+          "verifier": {
+            "type": "file_exists",
+            "path": "proofline.json"
+          }
+        },
+        {
+          "id": "AK-00-AC02",
+          "mandatory": true,
+          "statement": "licence committed",
+          "verifier": {
+            "type": "file_exists",
+            "path": "LICENSE"
+          }
+        },
+        {
+          "id": "AK-00-AC03",
+          "mandatory": true,
+          "statement": "package manifest committed",
+          "verifier": {
+            "type": "file_exists",
+            "path": "package.json"
+          }
+        },
+        {
+          "id": "AK-00-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started."
+      ]
+    },
+    {
+      "id": "AK-01",
+      "title": "generate, load, kid, key files mode 0600",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-00"
+      ],
+      "requirements": [
+        "ID-01",
+        "ID-02",
+        "ID-03"
+      ],
+      "description": "New repository mgillr/agentkey: package.json (name agentkey, type module, engines node>=22, zero dependencies), src/index.mjs exporting generate(role), load(role), kid(publicKey). Keys at $XDG_CONFIG_HOME/agentkey/keys/<role>.key (PKCS8 PEM, mode 0600) and <role>.pub; AGENTKEY_HOME overrides. kid = \"k\" + first 16 hex of sha256(raw 32-byte Ed25519 public key), identical to hivevault server/src/crdt.mjs:314. A key file whose mode is not 0600 is refused with code AGENTKEY_INSECURE. Roles are strings; role names with \"/\" are allowed (claude-code/subagent:reviewer). On win32 the default home is %APPDATA%/agentkey (AGENTKEY_HOME still overrides). README states plainly: a key at rest is readable by every process of the user, so an L1 signature identifies the user's machine key set for that role, not the agent process; AGENTKEY_SIGNER=ssh-agent is a later option.",
+      "scope": {
+        "allow": [
+          "package.json",
+          "src/**",
+          "test/**",
+          "README.md",
+          "LICENSE",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-01-AC01",
+          "mandatory": true,
+          "statement": "generate then load round-trips; kid matches the hivevault scheme for a fixture public key; a 0644 key file is refused; on win32 the default home is %APPDATA%/agentkey",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/keys.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-01-AC02",
+          "mandatory": true,
+          "statement": "package has zero runtime dependencies",
+          "verifier": {
+            "type": "command",
+            "cmd": "node -e \"const p=require('./package.json');process.exit(Object.keys(p.dependencies||{}).length?1:0)\"",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-01-AC03",
+          "mandatory": true,
+          "statement": "Apache-2.0 licence file present",
+          "verifier": {
+            "type": "file_exists",
+            "path": "LICENSE"
+          }
+        },
+        {
+          "id": "AK-01-AC04",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-01-AC05",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-01-AC06",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started."
+      ]
+    },
+    {
+      "id": "AK-02",
+      "title": "DSSE sign/verify and in-toto Statement builder",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-01"
+      ],
+      "requirements": [
+        "ID-07",
+        "RF-01",
+        "RF-02"
+      ],
+      "description": "signDSSE(payloadType, payload, key) builds a DSSE envelope: PAE(\"DSSEv1\", payloadType, payload) per the DSSE spec, Ed25519 signature, signatures[0].keyid = kid. verifyDSSE(envelope, keys) returns {verified:[kid...], unknown:[kid...], failed:[kid...]}; a signature that fails for a KNOWN key makes the whole result failed:true (never silently ignored). statement(subjects, predicateType, predicate) returns an in-toto Statement v1 ({\"_type\":\"https://in-toto.io/Statement/v1\", subject, predicateType, predicate}). Publish agentkey@0.1.0-next.0 under dist-tag next (provenance) at the end of this task; later tasks republish under next. Test vectors: the DSSE repository protocol test vectors (vendored under test/vectors/ with their licence), plus an interop test that an envelope signed here verifies with the sigstore npm package verifier in a devDependency-only test.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "test/**",
+          "README.md",
+          "CHANGELOG.md",
+          "package.json"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-02-AC01",
+          "mandatory": true,
+          "statement": "DSSE PAE vectors pass; tampered payload fails; unknown keyid reported as unknown; failed known key reported as failed",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/dsse.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-02-AC02",
+          "mandatory": true,
+          "statement": "an envelope signed here verifies with an independent DSSE implementation (sigstore npm verifier, devDependency)",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/interop.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-02-AC03",
+          "mandatory": true,
+          "statement": "Statement builder produces _type https://in-toto.io/Statement/v1",
+          "verifier": {
+            "type": "grep",
+            "file": "src/index.mjs",
+            "pattern": "https://in-toto\\.io/Statement/v1",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-02-AC04",
+          "mandatory": true,
+          "statement": "agentkey@next published with provenance so proofline and hivevault can depend on it before 0.1.0",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c \"npm view agentkey@next version | grep -q 0.1.0-next\"",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-02-AC05",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-02-AC06",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-02-AC07",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
+      ]
+    },
+    {
+      "id": "AK-03",
+      "title": "CLI: init, list, pub, sign, verify, revoke, --json, exit codes",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-02"
+      ],
+      "requirements": [
+        "ID-06",
+        "ID-07"
+      ],
+      "description": "bin/agentkey.mjs. Commands: init [role] (default role from AGENTKEY_ROLE else \"agent\"), list, pub <role>, sign <role> --type <payloadType> (payload on stdin, envelope on stdout), verify --keys <dir> (envelope on stdin), revoke <role> (moves the key to revoked/ and appends `<kid> <iso date>` to revoked.txt; verify exits 2 with reason \"revoked\"; a key record may carry not_after and a signature dated after it verifies as expired, exit 2). Every command takes --json. Exit codes: 0 ok, 1 verification failed, 2 unknown, revoked or expired key or missing input, 3 usage.",
+      "scope": {
+        "allow": [
+          "bin/**",
+          "src/**",
+          "test/**",
+          "README.md",
+          "CHANGELOG.md",
+          "package.json"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-03-AC01",
+          "mandatory": true,
+          "statement": "each command has a test; --json on every command; exit codes 0/1/2/3 as specified",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/cli.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-03-AC02",
+          "mandatory": true,
+          "statement": "bin entry declared",
+          "verifier": {
+            "type": "grep",
+            "file": "package.json",
+            "pattern": "\"agentkey\":\\s*\"bin/agentkey\\.mjs\"",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-03-AC03",
+          "mandatory": true,
+          "statement": "revoked kid exits 2 with reason revoked; not_after honoured",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/revoke.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-03-AC04",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-03-AC05",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-03-AC06",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started."
+      ]
+    },
+    {
+      "id": "AK-04",
+      "title": "Binding to the human SSH signing key via ssh-keygen -Y",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-03"
+      ],
+      "requirements": [
+        "ID-04"
+      ],
+      "description": "bind(role, sshKeyPath, principal) runs `ssh-keygen -Y sign -n agentkey -f <sshKey>` over the agent public key and stores <role>.pub.sshsig plus <role>.pub.principal (the e-mail or identity the allowed_signers line names) beside it. verifyBinding(pub, allowedSignersPath, principal) runs `ssh-keygen -Y verify -n agentkey -I <principal> -f <allowedSigners>`. Requires OpenSSH 8.0+; documented. Result vocabulary: bound (verified), unbound (no signature file), invalid (signature present but fails). CLI: agentkey bind <role> --principal <id> [--ssh-key <path>]. ssh-keygen is invoked, never reimplemented. The test generates a throwaway ed25519 SSH key.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-04-AC01",
+          "mandatory": true,
+          "statement": "a bound key verifies against an allowed_signers file; an unbound key reports unbound, not invalid; a tampered sshsig reports invalid",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/bind.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-04-AC02",
+          "mandatory": true,
+          "statement": "ssh-keygen is used",
+          "verifier": {
+            "type": "grep",
+            "file": "src/bind.mjs",
+            "pattern": "ssh-keygen -Y",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-04-AC03",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-04-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-04-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
+      ]
+    },
+    {
+      "id": "AK-05",
+      "title": "Optional Sigstore keyless signer plugin",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-02"
+      ],
+      "requirements": [
+        "ID-05",
+        "RF-02"
+      ],
+      "description": "src/sigstore.mjs exports signKeyless(payloadType, payload, {identityToken?}) using @sigstore/sign; the token comes from the GitHub Actions OIDC request or, on any other CI, from SIGSTORE_ID_TOKEN (optionalDependencies, loaded lazily; a missing module throws AGENTKEY_SIGSTORE_UNAVAILABLE). Produces a DSSE envelope whose signature carries the Sigstore bundle (verification material) so cosign verify-blob-attestation --certificate-identity-regexp --certificate-oidc-issuer verifies it. A workflow .github/workflows/sigstore-interop.yml with id-token: write signs a fixture statement and verifies it with cosign in the same job. Core package stays zero-dependency: @sigstore/sign is optional.",
+      "scope": {
+        "allow": [
+          "src/sigstore.mjs",
+          "src/index.mjs",
+          "test/**",
+          ".github/**",
+          "package.json",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-05-AC01",
+          "mandatory": true,
+          "statement": "without the optional module, signKeyless throws AGENTKEY_SIGSTORE_UNAVAILABLE and nothing else breaks",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/sigstore_absent.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-05-AC02",
+          "mandatory": true,
+          "statement": "@sigstore/sign is an optionalDependency, not a dependency",
+          "verifier": {
+            "type": "command",
+            "cmd": "node -e \"const p=require('./package.json');process.exit((p.optionalDependencies||{})['@sigstore/sign']&&!(p.dependencies||{})['@sigstore/sign']?0:1)\"",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-05-AC03",
+          "mandatory": true,
+          "statement": "interop workflow exists and calls cosign verify-blob-attestation",
+          "verifier": {
+            "type": "grep",
+            "file": ".github/workflows/sigstore-interop.yml",
+            "pattern": "cosign verify-blob-attestation",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-05-AC04",
+          "mandatory": true,
+          "statement": "interop workflow has a recorded green run (docs/sigstore-interop-run.json with conclusion success)",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/sigstore-interop-run.json",
+            "pattern": "\"conclusion\":\\s*\"success\"",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-05-AC05",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-05-AC06",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-05-AC07",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
+      ]
+    },
+    {
+      "id": "AK-06",
+      "title": "Publish agentkey@0.1.0 with provenance; small-order key check; trailer helper; interim patent statement",
+      "phase": "release",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-03",
+        "AK-04",
+        "AK-05"
+      ],
+      "requirements": [
+        "ID-07",
+        "RF-07",
+        "ZR-12"
+      ],
+      "description": "Port the small-order Ed25519 public key refusal from hivevault server/src/crdt.mjs:232-240 (with its test). Add trailer(kid, runId) returning the lines \"Agent-Key: <kid>\" and \"Agent-Run: <runId>\". Publish 0.1.0 to npm from a release workflow with provenance (npm publish --provenance). Record the published version and provenance URL in docs/releases.md.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "test/**",
+          ".github/**",
+          "docs/**",
+          "package.json",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-06-AC01",
+          "mandatory": true,
+          "statement": "small-order public keys are refused (table and test ported)",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/key_small_order.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-06-AC02",
+          "mandatory": true,
+          "statement": "trailer helper emits Agent-Key and Agent-Run lines",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/trailer.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-06-AC03",
+          "mandatory": true,
+          "statement": "release workflow publishes with provenance",
+          "verifier": {
+            "type": "grep",
+            "file": ".github/workflows/release.yml",
+            "pattern": "npm publish .*--provenance",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-06-AC04",
+          "mandatory": true,
+          "statement": "published version recorded",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/releases.md",
+            "pattern": "agentkey@0\\.1\\.0",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-06-AC05",
+          "mandatory": true,
+          "statement": "interim patent statement present (one paragraph: Apache-2.0 section 3 grants the licence; a fuller non-assert follows counsel review)",
+          "verifier": {
+            "type": "file_exists",
+            "path": "PATENTS-NONASSERT.md"
+          }
+        },
+        {
+          "id": "AK-06-AC06",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-06-AC07",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-06-AC08",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
+      ]
+    }
+  ],
+  "notes": "Pre-existing hivevault tasks are owned by backlog so next --owner hands out only this programme. Generated from the handoff document \"hivevault - explode and become indispensable\" (15 Oct 2026) by gen-contracts.py. Owners: lane-a (lead: hivevault, programme), lane-b (agentkey, proofline-action, HV-07, HV-08), lane-c (proofline)."
+}

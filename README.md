@@ -1,0 +1,3 @@
+# agentkey
+
+agentkey gives each AI agent role on a machine one Ed25519 key, and signs and verifies DSSE envelopes and in-toto Statements with it. It has no runtime dependencies (`node:crypto` only) and needs Node 22. The key id is `k` followed by the first 16 hex of SHA-256 over the raw public key, the same scheme hivevault uses for replica keys. A key at rest is readable by every process of the user who owns it, so a signature identifies that user's key set for the role, not one agent process. The library is in development: the functions, the CLI and the binding to an SSH signing key land task by task under `proofline.json`.

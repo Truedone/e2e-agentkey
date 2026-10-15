@@ -1,0 +1,15 @@
+{
+  "name": "agentkey",
+  "version": "0.1.0-next.0",
+  "description": "One Ed25519 key per agent role, DSSE envelopes and in-toto Statements, with no runtime dependencies.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "bin": { "agentkey": "bin/agentkey.mjs" },
+  "exports": { ".": "./src/index.mjs" },
+  "files": ["bin/", "src/", "LICENSE", "NOTICE", "README.md"],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "repository": { "type": "git", "url": "git+https://github.com/mgillr/agentkey.git" }
+}
