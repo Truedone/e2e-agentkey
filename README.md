@@ -87,6 +87,14 @@ The envelope is the standard one: DSSE with the in-toto Statement v1 inside, so 
 
 A key at rest is readable by every process of the user who owns it, so one agent can sign as another role on the same machine. A signature identifies the user's machine key set for that role, not the agent process; the binding adds the person behind that key set. `AGENTKEY_SIGNER=ssh-agent`, which keeps the private key in the agent instead of a file, is a later option.
 
+## How it fits
+
+![agentkey signs, proofline proves, hivevault remembers: agents sign with agentkey, proofline checks the work locally and proofline-action recomputes it in CI, and the receipts and memory land in one vault](docs/diagrams/agentkey-architecture.svg)
+
+## Inside the key
+
+![One key per agent role: the roles, the key files and their modes, the kid, and how a signature is upgraded by binding to a person or by keyless signing](docs/diagrams/agentkey-internals.svg)
+
 ## Reference
 
 ### Keys
