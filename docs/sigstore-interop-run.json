@@ -1,0 +1,9 @@
+{
+  "run_id": 38908875876,
+  "run_url": "https://github.com/mgillr/agentkey/actions/runs/38908875876",
+  "workflow": "sigstore-interop",
+  "event": "workflow_dispatch",
+  "head_sha": "b15dd60863486de3053c9a1fd2817fd24355089b",
+  "conclusion": "success",
+  "completed_at": "2026-10-16T13:35:07Z"
+}
