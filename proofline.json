@@ -490,14 +490,13 @@
         "ID-05",
         "RF-02"
       ],
-      "description": "src/sigstore.mjs exports signKeyless(payloadType, payload, {identityToken?}) using @sigstore/sign; the token comes from the GitHub Actions OIDC request or, on any other CI, from SIGSTORE_ID_TOKEN (optionalDependencies, loaded lazily; a missing module throws AGENTKEY_SIGSTORE_UNAVAILABLE). Produces a DSSE envelope whose signature carries the Sigstore bundle (verification material) so cosign verify-blob-attestation --certificate-identity-regexp --certificate-oidc-issuer verifies it. A workflow .github/workflows/sigstore-interop.yml with id-token: write signs a fixture statement and verifies it with cosign in the same job. Core package stays zero-dependency: @sigstore/sign is optional.",
+      "description": "src/sigstore.mjs exports signKeyless(payloadType, payload, {identityToken?}) using @sigstore/sign; the token comes from the GitHub Actions OIDC request or, on any other CI, from SIGSTORE_ID_TOKEN (optionalDependencies, loaded lazily; a missing module throws AGENTKEY_SIGSTORE_UNAVAILABLE). Produces a DSSE envelope whose signature carries the Sigstore bundle (verification material) so cosign verify-blob-attestation --certificate-identity-regexp --certificate-oidc-issuer verifies it. A workflow .github/workflows/sigstore-interop.yml with id-token: write signs a fixture statement and verifies it with cosign in the same job. Core package stays zero-dependency: @sigstore/sign is optional. The green run on main and its record are the next task, AK-05-RUN: this task passes the pre-push hook before the workflow has ever run, since the workflow cannot run before it is on main.",
       "scope": {
         "allow": [
           "src/sigstore.mjs",
           "src/index.mjs",
           "test/**",
           ".github/**",
-          "docs/sigstore-interop-run.json",
           "package.json",
           "README.md",
           "CHANGELOG.md"
@@ -537,17 +536,6 @@
           }
         },
         {
-          "id": "AK-05-AC04",
-          "mandatory": true,
-          "statement": "interop workflow has a recorded green run (docs/sigstore-interop-run.json with conclusion success)",
-          "verifier": {
-            "type": "grep",
-            "file": "docs/sigstore-interop-run.json",
-            "pattern": "\"conclusion\":\\s*\"success\"",
-            "must": "present"
-          }
-        },
-        {
           "id": "AK-05-AC05",
           "mandatory": true,
           "statement": "Full suite exits 0, nothing hung",
@@ -581,6 +569,75 @@
       ]
     },
     {
+      "id": "AK-05-RUN",
+      "title": "The Sigstore interop workflow ran green on main and its record is committed",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-05"
+      ],
+      "requirements": [
+        "ID-05",
+        "RF-02"
+      ],
+      "scope": {
+        "allow": [
+          "docs/sigstore-interop-run.json"
+        ]
+      },
+      "description": "After AK-05 is on main, the interop workflow is dispatched once on the owner-run runner and docs/sigstore-interop-run.json records the run as JSON: run_id, run_url, workflow (sigstore-interop), head_sha (the main commit the run checked out), conclusion, completed_at. The record is the only change. A record whose head_sha is not an ancestor of HEAD, or whose conclusion is not success, does not count.",
+      "criteria": [
+        {
+          "id": "AK-05-RUN-AC01",
+          "statement": "the record exists and its conclusion is success",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/sigstore-interop-run.json",
+            "pattern": "\"conclusion\":\\s*\"success\"",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-05-RUN-AC02",
+          "statement": "the record names the sigstore-interop workflow and its head_sha is an ancestor of HEAD",
+          "verifier": {
+            "type": "command",
+            "cmd": "node -e \"const r=require('./docs/sigstore-interop-run.json');const {execFileSync}=require('node:child_process');if(r.workflow!=='sigstore-interop'||!/^[0-9a-f]{40}$/.test(r.head_sha||''))process.exit(1);execFileSync('git',['merge-base','--is-ancestor',r.head_sha,'HEAD'])\"",
+            "expect_exit": 0,
+            "timeout_s": 60
+          }
+        },
+        {
+          "id": "AK-05-RUN-AC03",
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-05-RUN-AC04",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-05-RUN-AC05",
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
+      ]
+    },
+    {
       "id": "AK-06",
       "title": "Publish @optitransfer/agentkey@0.1.0 with provenance; small-order key check; trailer helper; interim patent statement",
       "phase": "release",
@@ -588,7 +645,7 @@
       "depends_on": [
         "AK-03",
         "AK-04",
-        "AK-05"
+        "AK-05-RUN"
       ],
       "requirements": [
         "ID-07",
@@ -702,7 +759,8 @@
       "phase": "integrate",
       "owner": "lane-b",
       "depends_on": [
-        "AK-05"
+        "AK-05",
+        "AK-05-RUN"
       ],
       "requirements": [
         "DG-R01"
@@ -960,6 +1018,103 @@
           "statement": "Committed and pushed to main",
           "verifier": {
             "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
+      ]
+    },
+    {
+      "id": "AK-SETUP",
+      "title": "One command from nothing to a vouched role the receiver can trust",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-04"
+      ],
+      "requirements": [],
+      "description": "`agentkey setup <role> --principal <id> [--trust <dir>] [--ssh-key <path>] [--json]` does in one step what the flow in the README does in three: creates the role's key if it does not exist, binds it to the person's SSH key, and writes the role's public key into the trust directory the receiver reads (default ./trust), printing the kid, the principal and the one line the agent needs to sign. It refuses to finish with any of the three missing and names the missing piece; it never overwrites an existing key or binding. Proofline's guided setup calls it for the owner role and the agent role. --ssh-key defaults to the key bind already uses (~/.ssh/id_ed25519) so a caller can pass the key it found; --json prints {role, kid, principal, trust, sign} and that shape is the interface proofline reads. Beside <role>.pub the trust directory receives the binding files (<role>.pub.sshsig, <role>.pub.principal) and the principal's allowed_signers line, so the receiver holds the key and what ties it to a person.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-SETUP-AC01",
+          "statement": "setup in an empty HOME creates the key, the binding and the trust directory files (<role>.pub, <role>.pub.sshsig, <role>.pub.principal, allowed_signers) in one run; the receiver side then works end to end: agentkey verify --keys <trust> verifies an envelope the role signed and verifyBinding on the trust directory copy reads bound; a second run leaves every file under HOME and the trust directory identical in bytes and mtime",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/setup.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-SETUP-AC02",
+          "statement": "setup checks its prerequisites (SSH key present, ssh-keygen 8.0 or later, trust directory writable) before writing anything: on a missing piece it exits 2, names the piece on stderr and no key file exists in HOME afterwards; a trust directory already holding a different <role>.pub is refused with the conflict named and never replaced",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/setup_refuses.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-SETUP-AC03",
+          "statement": "setup runs as a child process of bin/agentkey.mjs and setup --json prints {role, kid, principal, trust, sign}, the shape proofline reads",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/setup_cli.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-SETUP-AC04",
+          "statement": "the README flow names the short path",
+          "verifier": {
+            "type": "grep",
+            "file": "README.md",
+            "pattern": "agentkey setup",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-SETUP-AC05",
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-SETUP-AC06",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-SETUP-AC07",
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        },
+        {
+          "id": "AK-SETUP-AC08",
+          "statement": "an SSH key that needs a passphrase, with no ssh-agent and no tty, fails within 10 s with a named error and never hangs on the ssh-keygen prompt",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/setup_passphrase.test.mjs",
+            "cmd": "node --test {test}"
           }
         }
       ],
