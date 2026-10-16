@@ -607,7 +607,8 @@
           "CHANGELOG.md",
           "PATENTS-NONASSERT.md",
           "NOTICE",
-          "CONTRIBUTING.md"
+          "CONTRIBUTING.md",
+          "SECURITY.md"
         ]
       },
       "criteria": [
@@ -867,6 +868,103 @@
       ]
     },
     {
+      "id": "AK-LIC",
+      "title": "Licensing files for the public repository: NOTICE, the interim patent statement, CONTRIBUTING and SECURITY",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-04"
+      ],
+      "requirements": [],
+      "description": "Before the repository goes public it carries the same licensing surface as proofline: NOTICE names the copyright holder and the trademark and contribution terms; PATENTS-NONASSERT.md holds the interim paragraph (Apache-2.0 section 3 grants the licence, a fuller non-assertion follows the review); CONTRIBUTING.md says how work lands (tasks in proofline.json, a red test before the green), what a change keeps true (no runtime dependency, 0600 keys never replaced, a failed trusted signature fails the result, the exit codes) and the Developer Certificate of Origin sign-off rule; SECURITY.md says how to report a vulnerability and what is in scope. AK-06 then only publishes.",
+      "scope": {
+        "allow": [
+          "NOTICE",
+          "PATENTS-NONASSERT.md",
+          "CONTRIBUTING.md",
+          "SECURITY.md",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-LIC-AC01",
+          "statement": "NOTICE names the copyright holder and the trademark terms",
+          "verifier": {
+            "type": "grep",
+            "file": "NOTICE",
+            "pattern": "Ryan Gillespie / Optitransfer[\\s\\S]*[Tt]rademark",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-LIC-AC02",
+          "statement": "the interim patent statement is present and names Apache-2.0 section 3",
+          "verifier": {
+            "type": "grep",
+            "file": "PATENTS-NONASSERT.md",
+            "pattern": "[Ss]ection 3",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-LIC-AC03",
+          "statement": "CONTRIBUTING states the sign-off rule",
+          "verifier": {
+            "type": "grep",
+            "file": "CONTRIBUTING.md",
+            "pattern": "Signed-off-by",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-LIC-AC04",
+          "statement": "CONTRIBUTING states that work lands through proofline.json tasks with a red test first",
+          "verifier": {
+            "type": "grep",
+            "file": "CONTRIBUTING.md",
+            "pattern": "proofline\\.json",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-LIC-AC05",
+          "statement": "SECURITY.md says how to report a vulnerability",
+          "verifier": {
+            "type": "grep",
+            "file": "SECURITY.md",
+            "pattern": "[Rr]eport",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-LIC-AC06",
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-LIC-AC07",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-LIC-AC08",
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ]
+    },
+    {
       "id": "TB-05",
       "title": "Agent identity: honest model, agent-mediated signing, rotation",
       "phase": "implement",
@@ -941,6 +1039,13 @@
             "cmd": "npm test",
             "expect_exit": 0,
             "timeout_s": 1800
+          }
+        },
+        {
+          "id": "TB-05-AC07",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
           }
         },
         {
