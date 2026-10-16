@@ -743,8 +743,8 @@
       ]
     },
     {
-      "id": "AK-06-REL",
-      "title": "Publish @optitransfer/agentkey@0.1.0 with provenance and record it",
+      "id": "AK-06-VER",
+      "title": "The version becomes 0.1.0 before the release runs",
       "phase": "release",
       "owner": "lane-b",
       "depends_on": [
@@ -757,12 +757,82 @@
       ],
       "scope": {
         "allow": [
-          "docs/releases.md",
           "package.json",
           "CHANGELOG.md"
         ]
       },
-      "description": "On the owner's word only: the release workflow runs on main for 0.1.0 (the owner-run runner, one job, torn down after), npm shows the version with its provenance attestation, and docs/releases.md records the version, the run URL and the provenance (Sigstore transparency log) link. Whether provenance attaches on the owner-run runner is measured on this first run; if npm refuses it there, the task stops and reports the exact refusal rather than moving to a hosted runner.",
+      "description": "The release workflow publishes only the version package.json already carries on the commit it runs on, and since PL-13 the pre-push hook gates the task the sent commits name on every branch, so a version bump inside AK-06-REL can never be sent before the publish it needs. This task is the bump alone: package.json version 0.1.0 and the CHANGELOG's Unreleased heading becoming 0.1.0 with today's date. AK-06-REL then runs the workflow on the owner's word and records the result.",
+      "criteria": [
+        {
+          "id": "AK-06-VER-AC01",
+          "statement": "package.json says version 0.1.0",
+          "verifier": {
+            "type": "grep",
+            "file": "package.json",
+            "pattern": "\"version\":\\s*\"0\\.1\\.0\"",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-06-VER-AC02",
+          "statement": "the changelog heads the release with its version and date",
+          "verifier": {
+            "type": "grep",
+            "file": "CHANGELOG.md",
+            "pattern": "^## 0\\.1\\.0 \\(2026-10-1[0-9]\\)",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-06-VER-AC03",
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-06-VER-AC04",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-06-VER-AC05",
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
+      ]
+    },
+    {
+      "id": "AK-06-REL",
+      "title": "Publish @optitransfer/agentkey@0.1.0 by the owner's hand with 2FA and record it",
+      "phase": "release",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-06-VER"
+      ],
+      "requirements": [
+        "ID-07",
+        "RF-07",
+        "ZR-12"
+      ],
+      "scope": {
+        "allow": [
+          "docs/releases.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "description": "On the owner's word only (given in chat 2026-10-16 16:21Z, \"publish 0.1.0\", and 17:5xZ, \"when you need to publish provide the link and I'll 2FA\"), after AK-06-VER is on main: the owner declined a stored npm token, so the publish runs from a clean checkout of the AK-06-VER head on this machine with `npm publish --access public --tag latest`, npm's web authentication prints the link, the owner approves it with 2FA, and nothing else touches the registry. Before the publish `npm pack` produces the tarball and its shasum and integrity are recorded; after it `npm view` must show the same integrity. docs/releases.md records the version, the commit, the tarball shasum and integrity, and the time. Provenance cannot attach to a publish made this way (npm builds the attestation only from a CI identity), so 0.1.0 carries none; a later release through the release workflow with a CI credential is the task that measures provenance, and the record says so in one sentence.",
       "criteria": [
         {
           "id": "AK-06-REL-AC01",
@@ -776,21 +846,21 @@
         },
         {
           "id": "AK-06-REL-AC02",
-          "statement": "npm serves 0.1.0 with a provenance attestation",
+          "statement": "npm serves 0.1.0 with the integrity the record names",
           "verifier": {
             "type": "command",
-            "cmd": "node -e \"const {execFileSync}=require('node:child_process');const o=JSON.parse(execFileSync('npm',['view','@optitransfer/agentkey@0.1.0','dist','--json'],{encoding:'utf8'}));if(!o.attestations||!o.attestations.url)process.exit(1)\"",
+            "cmd": "node -e \"const {execFileSync}=require('node:child_process');const fs=require('node:fs');const o=JSON.parse(execFileSync('npm',['view','@optitransfer/agentkey@0.1.0','dist','--json'],{encoding:'utf8'}));const rec=fs.readFileSync('docs/releases.md','utf8');if(!o.integrity||!rec.includes(o.integrity))process.exit(1)\"",
             "expect_exit": 0,
             "timeout_s": 120
           }
         },
         {
           "id": "AK-06-REL-AC03",
-          "statement": "the record links the run and the transparency log entry",
+          "statement": "the record names the commit the tarball was built from and says that this release carries no provenance attestation",
           "verifier": {
             "type": "grep",
             "file": "docs/releases.md",
-            "pattern": "actions/runs/[0-9]+[\\s\\S]*(search\\.sigstore\\.dev|rekor)",
+            "pattern": "[0-9a-f]{40}[\\s\\S]*no provenance",
             "must": "present"
           }
         },
