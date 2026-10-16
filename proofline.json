@@ -962,6 +962,10 @@
             "type": "pushed"
           }
         }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
       ]
     },
     {
