@@ -690,6 +690,177 @@
         "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
         "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
       ]
+    },
+    {
+      "id": "DG-AK",
+      "title": "Diagrams land in agentkey once the keyless signer is on main",
+      "phase": "integrate",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-05"
+      ],
+      "requirements": [
+        "DG-R01"
+      ],
+      "description": "Copy docs/diagrams/agentkey-architecture.svg and docs/diagrams/agentkey-internals.svg from the programme repository (hivevault-programme/diagrams/, pinned by SHA256SUMS) byte for byte; README.md embeds both with ![](docs/diagrams/...) under a heading \"How it fits\" and \"Inside the key\"; docs/diagrams/README.md states the licence (CC-BY-4.0, from LICENSE-SPEC) and that the source of truth is the programme repository. Neither diagram names a paid tier.",
+      "scope": {
+        "allow": [
+          "docs/diagrams/**",
+          "README.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "DG-AK-AC01",
+          "mandatory": true,
+          "statement": "agentkey-architecture.svg present",
+          "verifier": {
+            "type": "file_exists",
+            "path": "docs/diagrams/agentkey-architecture.svg"
+          }
+        },
+        {
+          "id": "DG-AK-AC02",
+          "mandatory": true,
+          "statement": "agentkey-architecture.svg is byte-identical to the pinned diagram",
+          "verifier": {
+            "type": "command",
+            "cmd": "node -e \"process.exit(require('crypto').createHash('sha256').update(require('fs').readFileSync('docs/diagrams/agentkey-architecture.svg')).digest('hex')==='168002f4c4ae3a68fa2e140397681791fe3ae09ad31a42e80d499fc65ea37100'?0:1)\"",
+            "expect_exit": 0,
+            "timeout_s": 300
+          }
+        },
+        {
+          "id": "DG-AK-AC03",
+          "mandatory": true,
+          "statement": "agentkey-architecture.svg is well-formed SVG",
+          "verifier": {
+            "type": "command",
+            "cmd": "python3 -I -c \"import xml.etree.ElementTree as E; E.parse('docs/diagrams/agentkey-architecture.svg')\"",
+            "expect_exit": 0,
+            "timeout_s": 300
+          }
+        },
+        {
+          "id": "DG-AK-AC04",
+          "mandatory": true,
+          "statement": "agentkey-internals.svg present",
+          "verifier": {
+            "type": "file_exists",
+            "path": "docs/diagrams/agentkey-internals.svg"
+          }
+        },
+        {
+          "id": "DG-AK-AC05",
+          "mandatory": true,
+          "statement": "agentkey-internals.svg is byte-identical to the pinned diagram",
+          "verifier": {
+            "type": "command",
+            "cmd": "node -e \"process.exit(require('crypto').createHash('sha256').update(require('fs').readFileSync('docs/diagrams/agentkey-internals.svg')).digest('hex')==='9998c51f0876cfbd59e41a65ed44bbe0bb4e094e841e738492f849542ee0b946'?0:1)\"",
+            "expect_exit": 0,
+            "timeout_s": 300
+          }
+        },
+        {
+          "id": "DG-AK-AC06",
+          "mandatory": true,
+          "statement": "agentkey-internals.svg is well-formed SVG",
+          "verifier": {
+            "type": "command",
+            "cmd": "python3 -I -c \"import xml.etree.ElementTree as E; E.parse('docs/diagrams/agentkey-internals.svg')\"",
+            "expect_exit": 0,
+            "timeout_s": 300
+          }
+        },
+        {
+          "id": "DG-AK-AC07",
+          "mandatory": true,
+          "statement": "README embeds the architecture diagram",
+          "verifier": {
+            "type": "grep",
+            "file": "README.md",
+            "pattern": "docs/diagrams/agentkey-architecture\\.svg",
+            "must": "present"
+          }
+        },
+        {
+          "id": "DG-AK-AC08",
+          "mandatory": true,
+          "statement": "README embeds the internals diagram",
+          "verifier": {
+            "type": "grep",
+            "file": "README.md",
+            "pattern": "docs/diagrams/agentkey-internals\\.svg",
+            "must": "present"
+          }
+        },
+        {
+          "id": "DG-AK-AC09",
+          "mandatory": true,
+          "statement": "diagram README states the licence",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/diagrams/README.md",
+            "pattern": "CC-BY-4\\.0",
+            "must": "present"
+          }
+        },
+        {
+          "id": "DG-AK-AC10",
+          "mandatory": true,
+          "statement": "shared vocabulary present (agentkey)",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/diagrams/agentkey-architecture.svg",
+            "pattern": "agentkey",
+            "must": "present"
+          }
+        },
+        {
+          "id": "DG-AK-AC11",
+          "mandatory": true,
+          "statement": "shared vocabulary present (proofline)",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/diagrams/agentkey-architecture.svg",
+            "pattern": "proofline",
+            "must": "present"
+          }
+        },
+        {
+          "id": "DG-AK-AC12",
+          "mandatory": true,
+          "statement": "shared vocabulary present (hivevault)",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/diagrams/agentkey-architecture.svg",
+            "pattern": "hivevault",
+            "must": "present"
+          }
+        },
+        {
+          "id": "DG-AK-AC13",
+          "mandatory": true,
+          "statement": "shared vocabulary present (L2)",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/diagrams/agentkey-architecture.svg",
+            "pattern": "L2",
+            "must": "present"
+          }
+        },
+        {
+          "id": "DG-AK-AC14",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a diagram cannot land byte-identical because a label is wrong or a repository path differs: STOP and report; propose the change to the pinned SVG through the programme owner, never edit the SVG in place and never loosen the hash."
+      ]
     }
   ],
   "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent."
