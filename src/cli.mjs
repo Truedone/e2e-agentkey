@@ -1,4 +1,4 @@
-// the agentkey command line: init, list, pub, sign, verify, bind and revoke, each with --json. Exit codes: 0 ok, 1 a
+// the agentkey command line: init, list, pub, sign, verify, bind, setup and revoke, each with --json. Exit codes: 0 ok, 1 a
 // signature failed to verify, 2 an unknown, revoked or expired key or missing input, 3 usage
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { AgentkeyError, home, keyPaths, kid, generate, load, signDSSE, verifyDSSE } from './index.mjs';
 import { bind } from './bind.mjs';
+import { setup } from './setup.mjs';
 
 export const EXIT = { ok: 0, failed: 1, key: 2, usage: 3 };
 
@@ -17,6 +18,9 @@ const USAGE = `usage: agentkey <command> [--json]
   verify --keys <dir> [--at <t>] verify the DSSE envelope on stdin against the keys in <dir>
   bind <role> --principal <id> [--ssh-key <path>]
                                  sign the role's public key with your SSH key (default ~/.ssh/id_ed25519)
+  setup <role> --principal <id> [--ssh-key <path>] [--trust <dir>]
+                                 init, bind and copy the public key, the binding and your allowed_signers line
+                                 into the trust directory (default ./trust), in one step
   revoke <role>                  move the role's key to revoked/ and list its kid in revoked.txt
 exit codes: 0 ok, 1 verification failed, 2 unknown, revoked or expired key or missing input, 3 usage`;
 
@@ -25,8 +29,8 @@ class Exit extends Error {
 }
 const usage = (message) => new Exit(EXIT.usage, 'usage', message);
 
-// argv after the command: positionals, and --json, --type, --keys, --at, --principal and --ssh-key (as "--x v" or "--x=v")
-const TAKES = new Set(['type', 'keys', 'at', 'principal', 'ssh-key']);
+// argv after the command: positionals, and --json, --type, --keys, --at, --principal, --ssh-key and --trust (as "--x v" or "--x=v")
+const TAKES = new Set(['type', 'keys', 'at', 'principal', 'ssh-key', 'trust']);
 function parse(args) {
   const out = { _: [], json: false };
   for (let i = 0; i < args.length; i++) {
@@ -219,6 +223,13 @@ const commands = {
     const b = bind(a._[0], sshKey, a.principal, ctx.opts);
     return { result: { ok: true, role: b.role, kid: b.kid, principal: b.principal, sshKey, sig: b.sig, principalFile: b.principalFile }, text: `${b.kid} ${b.role} bound to ${b.principal}` };
   },
+  // init, bind and the receiver's trust files in one step; every prerequisite is checked before anything is written
+  setup(a, ctx) {
+    if (a._.length !== 1) throw usage('setup takes one role');
+    if (!a.principal) throw usage('setup needs --principal <id>, the identity your allowed_signers line names');
+    const r = setup(a._[0], { principal: a.principal, sshKey: a['ssh-key'], trust: a.trust, env: ctx.env, ...ctx.opts });
+    return { result: { ok: true, ...r }, text: `${r.kid} ${r.role} bound to ${r.principal}, trusted in ${r.trust}\n${r.sign}` };
+  },
   // the kid is listed in revoked.txt (and synced to disk) before the key moves, so a move that fails leaves the kid
   // revoked; the files go to <home>/revoked/<kid>.key and .pub, with the binding (.pub.sshsig, .pub.principal) when
   // there is one, which a later key for the same role never collides with
@@ -267,7 +278,7 @@ export function run(argv, { io = {}, env = process.env, opts = {}, now } = {}) {
     // any other error (a file it cannot read, say) exits 2 as well, never 1, which means only a failed signature
     let code = e instanceof Exit ? e.exit : EXIT.key, reason = e instanceof Exit ? e.reason : 'error';
     if (e instanceof AgentkeyError) {
-      reason = { AGENTKEY_MISSING: 'missing', AGENTKEY_ROLE: 'usage', AGENTKEY_PRINCIPAL: 'usage', AGENTKEY_INSECURE: 'insecure', AGENTKEY_INVALID: 'invalid', AGENTKEY_SSH: 'ssh', AGENTKEY_SSH_UNAVAILABLE: 'ssh' }[e.code] ?? e.code;
+      reason = { AGENTKEY_MISSING: 'missing', AGENTKEY_ROLE: 'usage', AGENTKEY_PRINCIPAL: 'usage', AGENTKEY_INSECURE: 'insecure', AGENTKEY_INVALID: 'invalid', AGENTKEY_SSH: 'ssh', AGENTKEY_SSH_UNAVAILABLE: 'ssh', AGENTKEY_SSH_PASSPHRASE: 'ssh', AGENTKEY_CONFLICT: 'conflict' }[e.code] ?? e.code;
       if (e.code === 'AGENTKEY_ROLE' || e.code === 'AGENTKEY_PRINCIPAL') code = EXIT.usage;
     }
     if (a.json) out(`${JSON.stringify({ ok: false, reason, error: e.message })}\n`);
