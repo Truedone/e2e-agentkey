@@ -1,7 +1,7 @@
 # Signs a fixture in-toto Statement with agentkey's keyless signer and verifies it with cosign in the same job.
 # Started by hand only: the signature goes to the public Sigstore instance, and its Fulcio certificate and Rekor entry
-# name this repository and workflow. The runner is the repository variable RUNNER_LABEL (ubuntu-latest unless a
-# one-job runner is being served).
+# name this repository and workflow. The runner is the repository variable RUNNER_LABEL, or GitHub's ubuntu-latest
+# where it is not set (a fork, or any repository without it).
 name: sigstore-interop
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ permissions:
   id-token: write
 jobs:
   interop:
-    runs-on: ${{ vars.RUNNER_LABEL }}
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
