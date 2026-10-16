@@ -37,6 +37,38 @@ npx @optitransfer/agentkey@next verify --keys trust < report.dsse.json     # "ve
 
 Exit codes: `0` verified, `1` a trusted key's signature does not verify, `2` an unknown, revoked or expired key or missing input, `3` usage. Every command takes `--json`. To tie the role to yourself, once: `npx @optitransfer/agentkey@next bind claude-code --principal you@example.com` signs the role's public key with your SSH key, and anyone with your `allowed_signers` line can check the binding with OpenSSH alone.
 
+## The problem, and how you use it
+
+Your agents act as you. They commit as you, open pull requests as you, write reports as you. When something turns out wrong, the record says "you" and nothing else: not which agent, not which machine, not whether a person stood behind it. And a report an agent wrote can be edited by anyone before it reaches you.
+
+agentkey fixes the record. Each agent role on a machine gets its own key. The agent signs what it produces. Anyone who receives it can check, offline, three things: which role signed it, that it has not been altered since, and which person's SSH key vouched for that role. No account, no server, no network.
+
+Three parties: **you** (the person), **the agent** (Claude Code, Cursor, a CI job) and **the receiver** (a reviewer, a pipeline, Proofline).
+
+```mermaid
+sequenceDiagram
+    participant You
+    participant Agent
+    participant Receiver
+    You->>Agent: 1. agentkey init claude-code (the role's key, on the agent's machine)
+    You->>Agent: 2. agentkey bind claude-code (your SSH key vouches for the role)
+    You->>Receiver: 3. agentkey pub claude-code (the public key, shared once)
+    Agent->>Receiver: 4. agentkey sign: a signed envelope around what it produced
+    Receiver->>Receiver: 5. agentkey verify --keys trust (offline, exit 0 or not)
+    You->>Agent: 6. agentkey revoke, when a key must stop counting
+```
+
+| Step | Who | What happens | Command |
+|---|---|---|---|
+| 1 | You | Create the role's key on the agent's machine, once per role. The key stays there, file mode 0600, never copied. | `npx @optitransfer/agentkey@next init claude-code` |
+| 2 | You | Vouch for the role with your own SSH key. The binding says "this person stands behind this role on this machine". | `npx @optitransfer/agentkey@next bind claude-code --principal you@example.com` |
+| 3 | You | Give the receiver the role's public key, once. That is all the receiver ever needs. | `npx @optitransfer/agentkey@next pub claude-code > trust/claude-code.pub` |
+| 4 | Agent | Sign what it produced. Any bytes in, a DSSE envelope out, with one signature whose id names the role's key. | `... \| npx @optitransfer/agentkey@next sign claude-code --type application/json` |
+| 5 | Receiver | Verify against the keys it trusts. Exit 0 means: this role, unaltered, vouched for. Exit 1 means the signature does not verify. Exit 2 means an unknown, revoked or expired key. | `npx @optitransfer/agentkey@next verify --keys trust < report.dsse.json` |
+| 6 | You | Stop a key from counting. A revoked key fails verification from then on, with exit code 2 and its kid named. | `npx @optitransfer/agentkey@next revoke claude-code` |
+
+What the signature does not prove: that the agent did good work. It proves who produced the artefact and that nobody changed it afterwards. Judging the work is what Proofline does, and it uses these signatures to say which agent its receipts are about.
+
 ## Why
 
 A signature from a shared account proves nothing about who acted. A key per agent role fixes the unit of accountability at the role on a machine: `claude-code` on your laptop is one key, `claude-code` in CI is another, a review role a third. The key never leaves the machine, is never replaced by accident (`init` on an existing role reports its key and never replaces it), and is refused by `load` when its file mode is wrong. Revocation is a line in the trusted keys directory's `revoked.txt` (`agentkey revoke` writes it into `keys/` on the signing machine; a receiver adds the line to its own); expiry is a date in the key record; both are checked at verification time, so a stolen or retired key stops verifying without touching the artefacts it signed.
