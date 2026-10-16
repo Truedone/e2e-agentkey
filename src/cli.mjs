@@ -7,6 +7,8 @@ import path from 'node:path';
 import { AgentkeyError, home, keyPaths, kid, generate, load, signDSSE, verifyDSSE } from './index.mjs';
 import { bind } from './bind.mjs';
 import { setup } from './setup.mjs';
+import { agentAdd, agentSigner } from './agent.mjs';
+import { rotate, rotationsIn } from './rotate.mjs';
 
 export const EXIT = { ok: 0, failed: 1, key: 2, usage: 3 };
 
@@ -22,6 +24,9 @@ const USAGE = `usage: agentkey <command> [--json]
                                  init, bind and copy the public key, the binding and your allowed_signers line
                                  into the trust directory (default ./trust), in one step
   revoke <role>                  move the role's key to revoked/ and list its kid in revoked.txt
+  rotate <role>                  a new key for the role, vouched for by the old one in rotations/<old>-<new>.rotation.dsse
+  agent-add <role> [--remove]    add the role's key to ssh-agent with per-use confirmation (as ssh-add -c);
+                                 AGENTKEY_SIGNER=ssh-agent then signs through the agent
 exit codes: 0 ok, 1 verification failed, 2 unknown, revoked or expired key or missing input, 3 usage`;
 
 class Exit extends Error {
@@ -41,6 +46,7 @@ function parse(args) {
     const name = a.slice(2, eq < 0 ? undefined : eq);
     if (name === 'json' && eq < 0) { out.json = true; continue; }
     if (name === 'help' && eq < 0) { out.help = true; continue; }
+    if (name === 'remove' && eq < 0) { out.remove = true; continue; }
     if (!TAKES.has(name)) throw usage(`unknown option ${a}`);
     // "--keys --json" is a missing value, not a directory named --json
     const v = eq < 0 ? (args[i + 1]?.startsWith('--') ? undefined : args[++i]) : a.slice(eq + 1);
@@ -112,7 +118,10 @@ export function trustDir(dir) {
     add(f, rec.publicKey, na);
     if (rec.kid !== undefined && rec.kid !== kid(rec.publicKey)) throw new Exit(EXIT.key, 'keys', `${f}: kid ${rec.kid} does not match its publicKey (${kid(rec.publicKey)})`);
   }
-  return { keys, revoked: readRevoked(path.join(dir, 'revoked.txt')) };
+  const revoked = readRevoked(path.join(dir, 'revoked.txt'));
+  // rotation statements in the directory extend trust from an old key to its successor (TB-05)
+  try { rotationsIn(dir, keys, revoked); } catch (e) { throw new Exit(EXIT.key, 'keys', e.message); }
+  return { keys, revoked };
 }
 
 // verifyDSSE against a trust directory, then each kid it verified classed by the directory: revoked when revoked.txt
@@ -195,11 +204,14 @@ const commands = {
   sign(a, ctx) {
     if (a._.length !== 1) throw usage('sign takes one role');
     if (!a.type) throw usage('sign needs --type <payloadType>');
-    const key = load(a._[0], ctx.opts);
+    // AGENTKEY_SIGNER picks where the private key is: file (the default) or ssh-agent; the result says which
+    const signer = ctx.env.AGENTKEY_SIGNER || 'file';
+    if (signer !== 'file' && signer !== 'ssh-agent') throw usage(`AGENTKEY_SIGNER is file or ssh-agent, not ${signer}`);
+    const key = signer === 'ssh-agent' ? agentSigner(a._[0], ctx.opts) : load(a._[0], ctx.opts);
     const payload = readStdin(ctx.io);
     if (!payload.length) throw new Exit(EXIT.key, 'input', 'sign reads the payload from stdin, and stdin was empty');
     const envelope = signDSSE(a.type, payload, key);
-    return { result: { ok: true, role: key.role, kid: key.kid, envelope }, text: JSON.stringify(envelope) };
+    return { result: { ok: true, role: a._[0], kid: key.kid, signer, envelope }, text: JSON.stringify(envelope) };
   },
   verify(a, ctx) {
     if (a._.length) throw usage('verify reads the envelope from stdin and takes no arguments');
@@ -229,6 +241,18 @@ const commands = {
     if (!a.principal) throw usage('setup needs --principal <id>, the identity your allowed_signers line names');
     const r = setup(a._[0], { principal: a.principal, sshKey: a['ssh-key'], trust: a.trust, env: ctx.env, ...ctx.opts });
     return { result: { ok: true, ...r }, text: `${r.kid} ${r.role} bound to ${r.principal}, trusted in ${r.trust}\n${r.sign}` };
+  },
+  // the role's key into ssh-agent with the confirm constraint (ssh-add -c); --remove deletes the key file after
+  'agent-add'(a, ctx) {
+    if (a._.length !== 1) throw usage('agent-add takes one role');
+    const r = agentAdd(a._[0], { ...ctx.opts, remove: a.remove === true });
+    return { result: { ok: true, ...r }, text: `${r.kid} ${r.role} added to ssh-agent with confirmation${r.removed ? '; the key file is removed' : ''}` };
+  },
+  // a new key for the role, vouched for by the old one in a rotation statement under <home>/rotations/
+  rotate(a, ctx) {
+    if (a._.length !== 1) throw usage('rotate takes one role');
+    const r = rotate(a._[0], { ...ctx.opts, now: ctx.now ?? Date.now() });
+    return { result: { ok: true, ...r }, text: `${r.new} ${r.role} replaces ${r.old}; give receivers ${r.file}` };
   },
   // the kid is listed in revoked.txt (and synced to disk) before the key moves, so a move that fails leaves the kid
   // revoked; the files go to <home>/revoked/<kid>.key and .pub, with the binding (.pub.sshsig, .pub.principal) when
@@ -278,7 +302,7 @@ export function run(argv, { io = {}, env = process.env, opts = {}, now } = {}) {
     // any other error (a file it cannot read, say) exits 2 as well, never 1, which means only a failed signature
     let code = e instanceof Exit ? e.exit : EXIT.key, reason = e instanceof Exit ? e.reason : 'error';
     if (e instanceof AgentkeyError) {
-      reason = { AGENTKEY_MISSING: 'missing', AGENTKEY_ROLE: 'usage', AGENTKEY_PRINCIPAL: 'usage', AGENTKEY_INSECURE: 'insecure', AGENTKEY_INVALID: 'invalid', AGENTKEY_SSH: 'ssh', AGENTKEY_SSH_UNAVAILABLE: 'ssh', AGENTKEY_SSH_PASSPHRASE: 'ssh', AGENTKEY_CONFLICT: 'conflict', AGENTKEY_UNSAFE_KEY: 'unsafe-key' }[e.code] ?? e.code;
+      reason = { AGENTKEY_MISSING: 'missing', AGENTKEY_ROLE: 'usage', AGENTKEY_PRINCIPAL: 'usage', AGENTKEY_INSECURE: 'insecure', AGENTKEY_INVALID: 'invalid', AGENTKEY_SSH: 'ssh', AGENTKEY_SSH_UNAVAILABLE: 'ssh', AGENTKEY_SSH_PASSPHRASE: 'ssh', AGENTKEY_CONFLICT: 'conflict', AGENTKEY_UNSAFE_KEY: 'unsafe-key', AGENTKEY_AGENT_UNAVAILABLE: 'agent', AGENTKEY_AGENT_REFUSED: 'agent', AGENTKEY_EXISTS: 'exists' }[e.code] ?? e.code;
       if (e.code === 'AGENTKEY_ROLE' || e.code === 'AGENTKEY_PRINCIPAL') code = EXIT.usage;
     }
     if (a.json) out(`${JSON.stringify({ ok: false, reason, error: e.message })}\n`);
