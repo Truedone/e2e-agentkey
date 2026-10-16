@@ -1,0 +1,30 @@
+# Signs a fixture in-toto Statement with agentkey's keyless signer and verifies it with cosign in the same job.
+# Started by hand only: the signature goes to the public Sigstore instance, and its Fulcio certificate and Rekor entry
+# name this repository and workflow. The runner is the repository variable RUNNER_LABEL (ubuntu-latest unless a
+# one-job runner is being served).
+name: sigstore-interop
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  interop:
+    runs-on: ${{ vars.RUNNER_LABEL }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm install --no-save --no-audit --no-fund
+      - uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+      - name: sign keyless
+        run: node test/interop/sigstore-interop.mjs out
+      - name: verify with cosign
+        run: |
+          cosign verify-blob-attestation \
+            --bundle out/bundle.json --new-bundle-format \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/sigstore-interop\.yml@" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --type https://github.com/mgillr/agentkey/sigstore-interop/v1 \
+            out/fixture.txt
