@@ -37,22 +37,91 @@ export function keyPaths(role, opts = {}) {
   return { key: `${base}.key`, pub: `${base}.pub` };
 }
 
+// The keys that may be trusted, ported from hivevault (server/src/crdt.mjs:232-295 at 3c8d4e2). An Ed25519 public key
+// is a point of the curve, and eight points have an order of 1, 2, 4 or 8. Under one of them a signature made with no
+// private key verifies: R = [S]B with any S passes under the identity key for every message, and R = identity with
+// S = 0 passes under the others for one message in two, four or eight. node:crypto imports every one of them and
+// verifies those forgeries. The 32 bytes also spell a field element y with one sign bit, and a y at or past
+// p (2^255 - 19) is a second spelling of y - p: two strings for one point. libsodium refuses both with a table of the
+// seven blocked y values, read with the sign bit masked, and a canonical check; the table is reproduced here, and
+// test/key_small_order.test.mjs proves each row is a point whose order divides 8 with its own curve arithmetic. A y
+// below p that no point of the curve has is no key at all, and node:crypto imports it too: it is decoded here as
+// RFC 8032 (5.1.3) decodes it
+const P25519 = (1n << 255n) - 19n;
+const modP = (a) => { const r = a % P25519; return r < 0n ? r + P25519 : r; };
+function powP(b, e) { let r = 1n; b = modP(b); while (e > 0n) { if (e & 1n) r = (r * b) % P25519; b = (b * b) % P25519; e >>= 1n; } return r; }
+const D25519 = modP(-121665n * powP(121666n, P25519 - 2n));   // d = -121665/121666
+// whether some x has x^2 = u / v, u = y^2 - 1, v = d y^2 + 1: the candidate x = u v^3 (u v^7)^((p - 5) / 8) is a root
+// when v x^2 = u, and x sqrt(-1) is one when v x^2 = -u; else there is none
+function curveHasY(y) {
+  const y2 = (y * y) % P25519, u = modP(y2 - 1n), v = modP(D25519 * y2 + 1n);
+  const v3 = (((v * v) % P25519) * v) % P25519;
+  const x = (((u * v3) % P25519) * powP((((((u * v3) % P25519) * v3) % P25519) * v) % P25519, (P25519 - 5n) / 8n)) % P25519;
+  const vx2 = (((v * x) % P25519) * x) % P25519;
+  return vx2 === u || vx2 === modP(-u);
+}
+const SMALL_ORDER_Y = [
+  '0000000000000000000000000000000000000000000000000000000000000000',   // y = 0: order 4
+  '0100000000000000000000000000000000000000000000000000000000000000',   // y = 1: the identity, order 1
+  '26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05',   // order 8
+  'c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a',   // order 8
+  'ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f',   // y = p - 1: order 2
+  'edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f',   // y = p, a second spelling of 0
+  'eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f',   // y = p + 1, a second spelling of 1
+].map((h) => Buffer.from(h, 'hex'));
+
+// null when the 32 bytes may be trusted as an Ed25519 public key, else why not: 'non-canonical key' (a y at or past
+// p), 'small-order key', or 'not a curve point'. The answer is kept per key (the decoding costs about a millisecond)
+const keyProblems = new Map();
+export function publicKeyProblem(bytes) {
+  const b = Buffer.from(bytes);
+  if (b.length !== 32) return 'malformed key';
+  const x = b.toString('base64url');
+  if (keyProblems.has(x)) return keyProblems.get(x);
+  let y = 0n;
+  for (let i = 31; i >= 0; i--) y = (y << 8n) | BigInt(i === 31 ? b[i] & 0x7f : b[i]);
+  let why = null;
+  if (y >= P25519) why = 'non-canonical key';
+  else if (SMALL_ORDER_Y.some((row) => row.compare(b, 0, 31, 0, 31) === 0 && (row[31] & 0x7f) === (b[31] & 0x7f))) why = 'small-order key';
+  else if (!curveHasY(y)) why = 'not a curve point';
+  if (keyProblems.size >= 10000) keyProblems.clear();
+  keyProblems.set(x, why);
+  return why;
+}
+const safe = (b) => {
+  const why = publicKeyProblem(b);
+  if (why) throw new AgentkeyError('AGENTKEY_UNSAFE_KEY', `public key ${b.toString('base64url')} refused: ${why}`);
+  return b;
+};
+
 // the raw 32-byte Ed25519 public key from a KeyObject (public or private), a PEM string, the base64url form hivevault
-// stores as a replica key's x, or the 32 bytes themselves
+// stores as a replica key's x, or the 32 bytes themselves; a key that may not be trusted is refused in every form
 function rawPublicKey(publicKey) {
   let k = publicKey;
   if (typeof k === 'string' && k.includes('-----BEGIN')) k = crypto.createPublicKey(k);
   if (k instanceof crypto.KeyObject) {
     if (k.type === 'private') k = crypto.createPublicKey(k);
     if (k.asymmetricKeyType !== 'ed25519') throw new AgentkeyError('AGENTKEY_INVALID', `not an Ed25519 key: ${k.asymmetricKeyType}`);
-    return Buffer.from(k.export({ format: 'jwk' }).x, 'base64url');
+    return safe(Buffer.from(k.export({ format: 'jwk' }).x, 'base64url'));
   }
   if (typeof k === 'string') {
     if (!/^[A-Za-z0-9_-]{43}$/.test(k)) throw new AgentkeyError('AGENTKEY_INVALID', 'a public key string is PEM or the base64url of 32 bytes');
-    return Buffer.from(k, 'base64url');
+    const b = Buffer.from(k, 'base64url');
+    // a second base64url spelling of the same 32 bytes (nonzero padding bits in the last character)
+    if (b.toString('base64url') !== k) throw new AgentkeyError('AGENTKEY_UNSAFE_KEY', `public key ${k} refused: non-canonical key`);
+    return safe(b);
   }
-  if (k instanceof Uint8Array && k.length === 32) return Buffer.from(k);
+  if (k instanceof Uint8Array && k.length === 32) return safe(Buffer.from(k));
   throw new AgentkeyError('AGENTKEY_INVALID', 'a public key is a KeyObject, PEM, base64url or 32 bytes');
+}
+
+// the trailer lines a commit made by an agent role carries, for `git commit --trailer` or a message's last paragraph:
+// "Agent-Key: <kid>" and "Agent-Run: <runId>". A kid is k and 16 hex; a run id is one line of printable characters
+// with no space, so neither can open another trailer
+export function trailer(keyId, runId) {
+  if (typeof keyId !== 'string' || !/^k[0-9a-f]{16}$/.test(keyId)) throw new AgentkeyError('AGENTKEY_INVALID', `a kid is k and 16 lowercase hex characters, not ${JSON.stringify(keyId)}`);
+  if (typeof runId !== 'string' || !/^[\x21-\x7e]{1,200}$/.test(runId)) throw new AgentkeyError('AGENTKEY_INVALID', 'a run id is 1 to 200 printable characters with no space or line break');
+  return `Agent-Key: ${keyId}\nAgent-Run: ${runId}`;
 }
 
 // "k" and the first 16 hex characters of SHA-256 over the raw public key: hivevault's replicaIdForKey
@@ -158,6 +227,7 @@ function trusted(keys) {
   return (keys || []).map((k) => {
     if (k && typeof k === 'object' && 'publicKey' in k && 'kid' in k && !(k instanceof Uint8Array)) {
       const p = k.publicKey instanceof crypto.KeyObject ? k.publicKey : crypto.createPublicKey(k.publicKey);
+      if (p.asymmetricKeyType === 'ed25519') rawPublicKey(p);   // an Ed25519 key named this way is checked the same
       return [k.kid, p];
     }
     const raw = rawPublicKey(k);

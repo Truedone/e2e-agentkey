@@ -278,7 +278,7 @@ export function run(argv, { io = {}, env = process.env, opts = {}, now } = {}) {
     // any other error (a file it cannot read, say) exits 2 as well, never 1, which means only a failed signature
     let code = e instanceof Exit ? e.exit : EXIT.key, reason = e instanceof Exit ? e.reason : 'error';
     if (e instanceof AgentkeyError) {
-      reason = { AGENTKEY_MISSING: 'missing', AGENTKEY_ROLE: 'usage', AGENTKEY_PRINCIPAL: 'usage', AGENTKEY_INSECURE: 'insecure', AGENTKEY_INVALID: 'invalid', AGENTKEY_SSH: 'ssh', AGENTKEY_SSH_UNAVAILABLE: 'ssh', AGENTKEY_SSH_PASSPHRASE: 'ssh', AGENTKEY_CONFLICT: 'conflict' }[e.code] ?? e.code;
+      reason = { AGENTKEY_MISSING: 'missing', AGENTKEY_ROLE: 'usage', AGENTKEY_PRINCIPAL: 'usage', AGENTKEY_INSECURE: 'insecure', AGENTKEY_INVALID: 'invalid', AGENTKEY_SSH: 'ssh', AGENTKEY_SSH_UNAVAILABLE: 'ssh', AGENTKEY_SSH_PASSPHRASE: 'ssh', AGENTKEY_CONFLICT: 'conflict', AGENTKEY_UNSAFE_KEY: 'unsafe-key' }[e.code] ?? e.code;
       if (e.code === 'AGENTKEY_ROLE' || e.code === 'AGENTKEY_PRINCIPAL') code = EXIT.usage;
     }
     if (a.json) out(`${JSON.stringify({ ok: false, reason, error: e.message })}\n`);
