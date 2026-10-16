@@ -1,0 +1,10 @@
+# The contract and evidence paths change only with the owner's review (TB-01).
+proofline.json @mgillr
+proofline.*.json @mgillr
+proofline.json.sig @mgillr
+.proofline/** @mgillr
+guard/** @mgillr
+gates/** @mgillr
+diagrams/SHA256SUMS @mgillr
+CODEOWNERS @mgillr
+.github/CODEOWNERS @mgillr
