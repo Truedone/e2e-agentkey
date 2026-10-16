@@ -34,10 +34,18 @@ function sshKeygen(args, input) {
 // signs the role's public key with the SSH key at sshKeyPath (a private key, or a public key whose private half is in
 // ssh-agent) and stores the signature as <role>.pub.sshsig and the principal, the identity the human's
 // allowed_signers line names, as <role>.pub.principal, both beside <role>.pub
-export function bind(role, sshKeyPath, principal, opts = {}) {
-  if (typeof principal !== 'string' || !principal || /[\s\x00-\x1f\x7f]/.test(principal)) {
-    throw new AgentkeyError('AGENTKEY_PRINCIPAL', 'a principal is the non-empty identity an allowed_signers line names, with no whitespace');
+// a principal is one exact allowed_signers entry. That field is a comma-separated pattern list, so a comma makes a
+// list, * and ? make patterns that accept other identities (measured: an entry *@example.com verifies for
+// eve@example.com), a leading # makes the line a comment, a quote or whitespace breaks the entry, and a leading -
+// reads as an option to ssh-keygen -I; the accepted set is letters, digits and . _ @ + -, not starting with -
+export function checkPrincipal(principal) {
+  if (typeof principal !== 'string' || principal.length > 256 || !/^[A-Za-z0-9._@+][A-Za-z0-9._@+-]*$/.test(principal)) {
+    throw new AgentkeyError('AGENTKEY_PRINCIPAL', `principal ${JSON.stringify(principal)} cannot be one exact allowed_signers entry: use letters, digits and . _ @ + - (not starting with -), such as you@example.com`);
   }
+}
+
+export function bind(role, sshKeyPath, principal, opts = {}) {
+  checkPrincipal(principal);
   const p = keyPaths(role, opts);
   let pem;
   try { pem = fs.readFileSync(p.pub, 'utf8'); } catch (e) {
