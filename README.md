@@ -35,6 +35,38 @@ const r = verifyDSSE(env, [key.publicKey]);   // { ok, verified, unknown, failed
 - `verifyDSSE(envelope, keys)` checks every signature against the trusted keys, given as Ed25519 public keys in any form `kid` takes, or as `{ kid, publicKey }` for a key of another type (it verifies ECDSA P-256 too, which is what DSSE's own test vector uses). Each signature's kid lands in `verified`, `unknown` (no trusted key has that keyid) or `failed` (a trusted key whose signature does not verify). `ok` is true only when at least one signature verified and none failed: a failed signature for a known key fails the whole result, and is never skipped. `payload` holds the bytes that were verified, decoded once, so use those rather than reading the envelope again. Standard and URL-safe base64 are both accepted.
 - `statement(subjects, predicateType, predicate)` returns an in-toto Statement v1, `{ _type: "https://in-toto.io/Statement/v1", subject, predicateType, predicate }`; each subject needs a non-empty `digest` map.
 
+## Command line
+
+```sh
+agentkey init claude-code                     # once per role; prints "<kid> claude-code created"
+agentkey pub claude-code > trust/claude-code.pub
+echo '{"ok":true}' | agentkey sign claude-code --type application/json > env.json
+agentkey verify --keys trust < env.json       # "verified <kid>", exit 0
+agentkey revoke claude-code                   # the key moves to revoked/, its kid is listed in keys/revoked.txt
+```
+
+| Command | Does |
+| --- | --- |
+| `init [role]` | Creates the role's key. The role defaults to `AGENTKEY_ROLE`, else `agent`. An existing key is reported (`created: false`) and never replaced. |
+| `list` | Every role that has a key, with its kid, and the kids in `keys/revoked.txt`. |
+| `pub <role>` | The role's public key as SPKI PEM. |
+| `sign <role> --type <payloadType>` | Signs stdin and writes the DSSE envelope to stdout. |
+| `verify --keys <dir> [--at <date>]` | Verifies the DSSE envelope on stdin against the keys in `<dir>`. |
+| `revoke <role>` | Appends `<kid> <ISO date>` to `keys/revoked.txt`, then moves the key and its `.pub` to `revoked/<kid>.key` and `.pub`. |
+
+Every command takes `--json` and then writes one JSON object to stdout, errors included (`{ "ok": false, "reason", "error" }`). The exit codes are:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | ok |
+| 1 | verification failed: a trusted key's signature does not verify |
+| 2 | an unknown, revoked or expired key, or missing input (empty stdin, no key for the role, an unreadable keys directory) |
+| 3 | usage |
+
+The keys directory for `verify` holds `*.pub` files (SPKI PEM, or the base64url of the 32 raw bytes) and `*.json` key records `{ "publicKey": ..., "not_after": "<ISO date>" }`, read recursively, and `revoked.txt` at its top. The role's own `keys/` directory is one. `verify` reports, in this order: `failed` (exit 1), then `revoked` and `expired` (exit 2) when a signature verified from a key that `revoked.txt` lists or whose `not_after` has passed, then `verified` (exit 0), then `unknown` (exit 2). A signature that names a revoked kid whose key is no longer in the directory counts as revoked. A key record that cannot be read, or a `not_after` that is not an ISO date, is an error (exit 2), so a limit is never dropped without notice. Two files for one key keep the earlier `not_after`.
+
+A DSSE signature carries no date, so `not_after` is checked against the time of verification, which is now unless `--at` names another, such as the time a trusted log recorded the envelope. A date written next to the signature would not be signed, and the holder of the key could backdate it.
+
 ## What a signature proves
 
 A key at rest is readable by every process of the user who owns it, so one agent can sign as another role on the same machine. An L1 signature identifies the user's machine key set for that role, not the agent process. `AGENTKEY_SIGNER=ssh-agent`, which keeps the private key in the agent instead of a file, is a later option.
