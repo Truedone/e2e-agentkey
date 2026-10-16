@@ -20,6 +20,21 @@ A key lives at `$XDG_CONFIG_HOME/agentkey/keys/<role>.key` (PKCS8 PEM, mode 0600
 
 Windows has no POSIX file modes, so `load` does not check the mode there; the key is protected by the user's access control on `%APPDATA%`.
 
+## Envelopes and Statements
+
+```js
+import { load, signDSSE, verifyDSSE, statement } from '@optitransfer/agentkey';
+
+const key = load('claude-code');
+const st = statement([{ name: 'app.tgz', digest: { sha256: '...' } }], 'https://example.com/predicate/v1', { ok: true });
+const env = signDSSE('application/vnd.in-toto+json', JSON.stringify(st), key);
+const r = verifyDSSE(env, [key.publicKey]);   // { ok, verified, unknown, failed, payloadType, payload }
+```
+
+- `signDSSE(payloadType, payload, key)` signs the DSSE pre-authentication encoding (`pae`) of the type and the payload with the role's Ed25519 key and returns an envelope with exactly one signature, whose `keyid` is the key's kid. The payload is a string or bytes; the envelope carries it as base64.
+- `verifyDSSE(envelope, keys)` checks every signature against the trusted keys, given as Ed25519 public keys in any form `kid` takes, or as `{ kid, publicKey }` for a key of another type (it verifies ECDSA P-256 too, which is what DSSE's own test vector uses). Each signature's kid lands in `verified`, `unknown` (no trusted key has that keyid) or `failed` (a trusted key whose signature does not verify). `ok` is true only when at least one signature verified and none failed: a failed signature for a known key fails the whole result, and is never skipped. `payload` holds the bytes that were verified, decoded once, so use those rather than reading the envelope again. Standard and URL-safe base64 are both accepted.
+- `statement(subjects, predicateType, predicate)` returns an in-toto Statement v1, `{ _type: "https://in-toto.io/Statement/v1", subject, predicateType, predicate }`; each subject needs a non-empty `digest` map.
+
 ## What a signature proves
 
 A key at rest is readable by every process of the user who owns it, so one agent can sign as another role on the same machine. An L1 signature identifies the user's machine key set for that role, not the agent process. `AGENTKEY_SIGNER=ssh-agent`, which keeps the private key in the agent instead of a file, is a later option.

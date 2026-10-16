@@ -1,0 +1,23 @@
+{
+  "source": "https://github.com/secure-systems-lab/dsse/blob/b531b787bb3e5f0c3e1c19cee84da1c5d569b061/protocol.md#test-vectors",
+  "license": "Apache-2.0, the DSSE authors; see LICENSE-dsse in this directory",
+  "payloadType": "http://example.com/HelloWorld",
+  "body": "hello world",
+  "pae": "DSSEv1 29 http://example.com/HelloWorld 11 hello world",
+  "key": {
+    "algorithm": "ECDSA over NIST P-256 and SHA-256, with deterministic-rfc6979",
+    "signature": "raw concatenation of r and s",
+    "x": "46950820868899156662930047687818585632848591499744589407958293238635476079160",
+    "y": "5640078356564379163099075877009565129882514886557779369047442380624545832820",
+    "d": "97358161215184420915383655311931858321456579547487070936769975997791359926199"
+  },
+  "envelope": {
+    "payload": "aGVsbG8gd29ybGQ=",
+    "payloadType": "http://example.com/HelloWorld",
+    "signatures": [
+      {
+        "sig": "A3JqsQGtVsJ2O2xqrI5IcnXip5GToJ3F+FnZ+O88SjtR6rDAajabZKciJTfUiHqJPcIAriEGAHTVeCUjW2JIZA=="
+      }
+    ]
+  }
+}

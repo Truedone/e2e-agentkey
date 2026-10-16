@@ -114,3 +114,100 @@ export function load(role, opts = {}) {
   if (privateKey.asymmetricKeyType !== 'ed25519') throw new AgentkeyError('AGENTKEY_INVALID', `${p.key} holds a ${privateKey.asymmetricKeyType} key, not Ed25519`);
   return { role, kid: kid(privateKey), publicKey: rawPublicKey(privateKey).toString('base64url'), privateKey };
 }
+
+// DSSE (github.com/secure-systems-lab/dsse, protocol.md): the bytes a signature covers are
+// PAE(type, body) = "DSSEv1" SP LEN(type) SP type SP LEN(body) SP body, LEN being the byte length in ASCII decimal
+const asBytes = (x, what) => {
+  if (typeof x === 'string') return Buffer.from(x, 'utf8');
+  if (x instanceof Uint8Array) return Buffer.from(x);
+  throw new AgentkeyError('AGENTKEY_INVALID', `${what} is a string or bytes`);
+};
+export function pae(payloadType, payload) {
+  const t = asBytes(payloadType, 'payloadType'); const b = asBytes(payload, 'payload');
+  return Buffer.concat([Buffer.from(`DSSEv1 ${t.length} `), t, Buffer.from(` ${b.length} `), b]);
+}
+
+// the private key of a load() result, or a private KeyObject or PKCS8 PEM
+function privateKeyOf(key) {
+  let k = key?.privateKey ?? key;
+  if (typeof k === 'string') k = crypto.createPrivateKey(k);
+  if (!(k instanceof crypto.KeyObject) || k.type !== 'private' || k.asymmetricKeyType !== 'ed25519') {
+    throw new AgentkeyError('AGENTKEY_INVALID', 'signing takes the result of load(role), or an Ed25519 private key');
+  }
+  return k;
+}
+
+// one DSSE envelope with exactly one Ed25519 signature, its keyid the signer's kid; payload is a string or bytes
+export function signDSSE(payloadType, payload, key) {
+  const k = privateKeyOf(key);
+  const body = asBytes(payload, 'payload');
+  const sig = crypto.sign(null, pae(payloadType, body), k);
+  return { payloadType, payload: body.toString('base64'), signatures: [{ keyid: kid(k), sig: sig.toString('base64') }] };
+}
+
+// DSSE allows standard and URL-safe base64, and a verifier must accept both
+const B64 = /^(?:[A-Za-z0-9+/_-]{4})*(?:[A-Za-z0-9+/_-]{2}(?:==)?|[A-Za-z0-9+/_-]{3}=?)?$/;
+function fromB64(s, what) {
+  if (typeof s !== 'string' || !B64.test(s)) throw new AgentkeyError('AGENTKEY_INVALID', `${what} is not base64`);
+  return Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+}
+
+// the trusted keys as [kid, KeyObject]: an Ed25519 key in any form kid() takes, or { kid, publicKey } for a key of
+// another type (an ECDSA P-256 key, say, whose id the caller names)
+function trusted(keys) {
+  return (keys || []).map((k) => {
+    if (k && typeof k === 'object' && 'publicKey' in k && 'kid' in k && !(k instanceof Uint8Array)) {
+      const p = k.publicKey instanceof crypto.KeyObject ? k.publicKey : crypto.createPublicKey(k.publicKey);
+      return [k.kid, p];
+    }
+    const raw = rawPublicKey(k);
+    return [kid(raw), crypto.createPublicKey({ key: { kty: 'OKP', crv: 'Ed25519', x: raw.toString('base64url') }, format: 'jwk' })];
+  });
+}
+
+function verifyOne(publicKey, data, sig) {
+  try {
+    if (publicKey.asymmetricKeyType === 'ed25519') return crypto.verify(null, data, publicKey, sig);
+    if (publicKey.asymmetricKeyType === 'ec') {
+      // DSSE's own test vector carries r and s concatenated; DER is what most ECDSA signers write
+      return crypto.verify('sha256', data, { key: publicKey, dsaEncoding: sig.length === 64 ? 'ieee-p1363' : 'der' }, sig);
+    }
+  } catch { /* a malformed signature is a failed one */ }
+  return false;
+}
+
+// checks every signature of a DSSE envelope against the trusted keys. Returns { ok, verified, unknown, failed,
+// payloadType, payload }: verified, unknown and failed list kids (a signature with no keyid that no key verifies is
+// listed as null). A signature whose keyid names a trusted key and does not verify is in failed and makes ok false,
+// whatever else verified; ok is true only when at least one signature verified and none failed. payload is the
+// bytes that were verified, decoded once, so a caller never parses the envelope a second time
+export function verifyDSSE(envelope, keys) {
+  if (!envelope || typeof envelope !== 'object' || typeof envelope.payloadType !== 'string' || !Array.isArray(envelope.signatures) || !envelope.signatures.length) {
+    throw new AgentkeyError('AGENTKEY_INVALID', 'a DSSE envelope has a payloadType string, a base64 payload and at least one signature');
+  }
+  const body = fromB64(envelope.payload, 'payload');
+  const data = pae(envelope.payloadType, body);
+  const ring = trusted(keys);
+  const verified = [], unknown = [], failed = [];
+  for (const s of envelope.signatures) {
+    const id = typeof s?.keyid === 'string' && s.keyid !== '' ? s.keyid : null;
+    const sig = fromB64(s?.sig, 'signature');
+    const candidates = id === null ? ring : ring.filter(([k]) => k === id);
+    if (!candidates.length) { unknown.push(id); continue; }
+    const hit = candidates.find(([, p]) => verifyOne(p, data, sig));
+    if (hit) verified.push(hit[0]);
+    else if (id === null) unknown.push(null);
+    else failed.push(id);
+  }
+  return { ok: verified.length > 0 && failed.length === 0, verified, unknown, failed, payloadType: envelope.payloadType, payload: body };
+}
+
+// an in-toto Statement v1 (github.com/in-toto/attestation, spec/v1/statement.md); each subject names its artifact
+// with a digest map, such as { name: 'pkg.tgz', digest: { sha256: '...' } }
+export function statement(subjects, predicateType, predicate) {
+  if (!Array.isArray(subjects) || !subjects.length || subjects.some((s) => !s || typeof s.digest !== 'object' || !Object.keys(s.digest).length)) {
+    throw new AgentkeyError('AGENTKEY_INVALID', 'a Statement has at least one subject, each with a non-empty digest map');
+  }
+  if (typeof predicateType !== 'string' || !predicateType) throw new AgentkeyError('AGENTKEY_INVALID', 'predicateType is a URI string');
+  return { _type: 'https://in-toto.io/Statement/v1', subject: subjects, predicateType, predicate };
+}
