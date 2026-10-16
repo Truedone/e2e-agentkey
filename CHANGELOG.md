@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 (2026-10-16)
 
 - `AGENTKEY_SIGNER=ssh-agent` and `agentkey agent-add <role> [--remove]`: the role key goes into ssh-agent with the confirm constraint (as `ssh-add -c`), written on the agent socket so no OpenSSH key file is made, and with `--remove` the key file is deleted; signing then goes through the agent, each signature waits for a person's confirmation, and the agent's signature is checked against the role's public key before it is used. `sign --json` reports `signer: file | ssh-agent`; `agentSigner(role)` gives the same signer to `signDSSE`. (TB-05)
 - `agentkey rotate <role>` and `rotate()`: a new key for the role, the old one kept under `rotated/`, and a rotation statement signed by the old key in `rotations/<old>-<new>.rotation.dsse`. A trust directory holding the statement accepts the new kid when the statement verifies under a trusted, unrevoked old key, and gives the old key a `not_after` of the rotation date; chains are followed; a statement that does not verify under the key it names refuses the directory. (TB-05)
