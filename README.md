@@ -67,6 +67,14 @@ sequenceDiagram
 | 5 | Receiver | Verify against the keys it trusts. Exit 0 means: this role, unaltered, vouched for. Exit 1 means the signature does not verify. Exit 2 means an unknown, revoked or expired key. | `npx @optitransfer/agentkey@next verify --keys trust < report.dsse.json` |
 | 6 | You | Stop a key from counting. A revoked key fails verification from then on, with exit code 2 and its kid named. | `npx @optitransfer/agentkey@next revoke claude-code` |
 
+Steps 1 to 3 in one command, on the agent's machine:
+
+```bash
+npx @optitransfer/agentkey@next setup claude-code --principal you@example.com   # "<kid> claude-code bound to you@example.com, trusted in ./trust"
+```
+
+`agentkey setup` creates the role's key if there is none, binds it with your SSH key (`~/.ssh/id_ed25519`, or `--ssh-key <path>`), and writes into `./trust` (or `--trust <dir>`) the four files a receiver needs: the role's public key, its binding (`.pub.sshsig`, `.pub.principal`) and your `allowed_signers` line. It checks everything before it writes anything, so a missing SSH key, an `ssh-keygen` older than OpenSSH 8.0 or a trust directory it cannot write stops it with the missing piece named and nothing created. It never replaces a key or a binding, and running it again changes nothing. A passphrase-protected SSH key needs `ssh-add` first, or a terminal to type the passphrase on; without either it stops at once rather than wait on a prompt. It prints the one line the agent signs with; `--json` prints `{ role, kid, principal, trust, sign }`.
+
 What the signature does not prove: that the agent did good work. It proves who produced the artefact and that nobody changed it afterwards. Judging the work is what Proofline does, and it uses these signatures to say which agent its receipts are about.
 
 ## Why
