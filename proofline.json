@@ -1196,6 +1196,112 @@
       ]
     },
     {
+      "id": "AK-REV1",
+      "title": "Review findings on setup and the interop workflow: six refusals that were silent",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-SETUP",
+        "AK-05"
+      ],
+      "requirements": [],
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          ".github/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "description": "Six findings from an automated review of 8583e53 and 2be84bd, each recorded as an issue. The interop workflow (and the release workflow) read the runner label from a repository variable with no fallback, so a repository without the variable cannot run the job. setup reused a role's public key without checking that its private key exists and matches; it checked the trust directory's root for writability and left three copied files behind when allowed_signers turned out to be a directory; it accepted principals that OpenSSH reads as a comment, a list, an invalid entry or a pattern (a * or ? in the field makes the line accept other identities); it reported a trust conflict by comparing bytes, so the raw base64url form of the same key was refused with two identical kids printed; and it decided whether a terminal can ask for a passphrase by opening /dev/tty, which Windows lacks. Each fix carries a test that fails on the code as it is and passes after; bind and setup apply the same principal rule. The release workflow gets the same runner fallback inside AK-06, whose scope covers .github/**; this task fixes the interop workflow and adds the test over every workflow.",
+      "criteria": [
+        {
+          "id": "AK-REV1-AC01",
+          "statement": "every workflow under .github/workflows that reads a runner label from a variable falls back to ubuntu-latest, and a test refuses one that does not",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/workflows_runner.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-REV1-AC02",
+          "statement": "setup refuses a role public key whose private key is missing or does not match it, and writes nothing",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/setup_key_pair.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-REV1-AC03",
+          "statement": "setup preflights every trust destination before the first write and rolls back every file it created when a later step fails; a second run after the obstacle is removed succeeds",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/setup_rollback.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-REV1-AC04",
+          "statement": "a principal that cannot form a single exact allowed_signers entry is refused by setup and by bind before anything is written: the field is a pattern list, so beyond a leading #, a comma, a quote, a leading - and whitespace, the wildcards * and ? are refused too (measured: \"a*b\" verifies and \"*@example.com\" would accept other identities); the accepted set is [A-Za-z0-9._@+-], and the binding of an accepted principal verifies",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/principal_rule.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-REV1-AC05",
+          "statement": "a trust public key in the raw base64url form with the same kid is accepted as the same key; a different kid is still refused",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/setup_trust_identity.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-REV1-AC06",
+          "statement": "the terminal decision uses the tty flags with the /dev/tty probe as the POSIX fallback, and answers correctly for a Windows and a POSIX environment",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/setup_tty.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-REV1-AC07",
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-REV1-AC08",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-REV1-AC09",
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
+      ]
+    },
+    {
       "id": "TB-05",
       "title": "Agent identity: honest model, agent-mediated signing, rotation",
       "phase": "implement",
