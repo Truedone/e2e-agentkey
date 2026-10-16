@@ -9,7 +9,11 @@
     "Never bypass guards: no --no-verify, no bypass env vars, no skip flags.",
     "Deliver continuously: one task per commit, pushed to main as it goes green.",
     "Honest reporting: TASK-ID | status | commit | tests | measured vs target | missing.",
-    "A receipt never overclaims: ran:false is reported as not run, never as pass (ZR-11)."
+    "A receipt never overclaims: ran:false is reported as not run, never as pass (ZR-11).",
+    "The verifier never controls its own trust boundary: contract, evidence and gate records change only through the owner deploy key.",
+    "Heuristic checks are one layer, never a boundary; say so in every receipt and page.",
+    "No reliability or enterprise claim without a gated task behind it (TB-08).",
+    "Honest reporting: TASK-ID | status | commit | tests | missing."
   ],
   "defaults": {
     "base": "origin/main",
@@ -860,6 +864,97 @@
       ],
       "stop_rules": [
         "If a diagram cannot land byte-identical because a label is wrong or a repository path differs: STOP and report; propose the change to the pinned SVG through the programme owner, never edit the SVG in place and never loosen the hash."
+      ]
+    },
+    {
+      "id": "TB-05",
+      "title": "Agent identity: honest model, agent-mediated signing, rotation",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-06"
+      ],
+      "requirements": [
+        "TB-R05"
+      ],
+      "description": "README and docs state the identity model exactly: a role key identifies the user's role-specific key on that machine, not a unique agent process; every process of that user can read it; isolation options are listed with what each gives. Implemented: AGENTKEY_SIGNER=ssh-agent, where the role key is loaded into ssh-agent with per-use confirmation (`ssh-add -c`) so a signature needs a human confirmation and the private key never sits readable on disk; AGENTKEY_SIGNER=file remains the default and the receipt records `signer: file|ssh-agent|keyless`. Documented option: one OS user per agent with its own AGENTKEY_HOME, and hardware-backed keys via ssh-agent with an `ed25519-sk` token (signatures then verify through ssh-keygen -Y, recorded as signer: sk). Rotation: `agentkey rotate <role>` creates a new key, signs a rotation statement with the old key (old kid, new kid, date) stored in rotations/, sets not_after on the old key; verifiers that know the old kid accept the new one through the chain; hivevault keys trust imports rotation statements with `keys rotate`. Revocation and not_after as in AK-03.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md",
+          "package.json"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "TB-05-AC01",
+          "mandatory": true,
+          "statement": "ssh-agent signer signs through the agent with a confirmation hook and the receipt records signer: ssh-agent; file signer records signer: file",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/signer_ssh_agent.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "TB-05-AC02",
+          "mandatory": true,
+          "statement": "rotate produces a chained statement; a verifier with the old kid accepts the new kid; the old key expires",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/rotate.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "TB-05-AC03",
+          "mandatory": true,
+          "statement": "README states the identity model in the words of the review",
+          "verifier": {
+            "type": "grep",
+            "file": "README.md",
+            "pattern": "not (necessarily )?a unique agent process",
+            "must": "present"
+          }
+        },
+        {
+          "id": "TB-05-AC04",
+          "mandatory": true,
+          "statement": "isolation options documented",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/identity.md",
+            "pattern": "ssh-add -c[\\s\\S]*ed25519-sk[\\s\\S]*one OS user per agent",
+            "must": "present"
+          }
+        },
+        {
+          "id": "TB-05-AC05",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "TB-05-AC06",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without weakening a rule, widening a bypass list, or signing with a key that is not the owner's: STOP and report. Never mark a boundary criterion passed by hand.",
+        "If the environment a criterion needs is missing (repository admin, the owner key, a container runtime, OIDC): report BLOCKED with the exact missing item."
       ]
     }
   ],
