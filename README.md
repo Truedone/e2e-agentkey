@@ -1,8 +1,55 @@
 # agentkey
 
-agentkey gives each AI agent role on a machine one Ed25519 key, and signs and verifies DSSE envelopes and in-toto Statements with it. It has no runtime dependencies (`node:crypto` only) and needs Node 22. The key id is `k` followed by the first 16 hex of SHA-256 over the raw public key, the same scheme hivevault uses for replica keys. A key at rest is readable by every process of the user who owns it, so a signature identifies that user's key set for the role, not one agent process. The library is in development: the functions, the CLI and the binding to an SSH signing key land task by task under `proofline.json`.
+**One key per AI agent role. Every artefact the agent signs says which role made it, on which machine, bound to which person.**
 
-## Keys
+Coding agents act under a person's accounts: they commit as you, open pull requests as you, write files as you. When something turns out wrong, nothing in the record says which agent did it, whether it ran on your machine, or whether a person stood behind it. agentkey gives each agent role on a machine its own Ed25519 key, signs what the agent produces as a DSSE envelope or an in-toto Statement, verifies those signatures offline against a directory of trusted keys with revocation and expiry, and binds the role's key to the person's SSH key so the chain ends at a human. No runtime dependencies (`node:crypto`), Node 22+, Apache-2.0.
+
+```mermaid
+flowchart LR
+    H["a person<br/>SSH signing key"] -- "agentkey bind<br/>ssh-keygen -Y" --> K["the role's key<br/>~/.config/agentkey/keys/&lt;role&gt;.key<br/>Ed25519, mode 0600"]
+    A["the agent<br/>(claude-code, cursor, a CI job)"] -- "agentkey sign<br/>signDSSE, statement" --> E["DSSE envelope<br/>in-toto Statement v1<br/>one signature, keyid = kid"]
+    K --> E
+    E --> V["agentkey verify<br/>verifyDSSE, offline"]
+    T["trusted keys directory<br/>*.pub, key records with not_after,<br/>revoked.txt"] --> V
+    V --> R["verified &lt;kid&gt;<br/>or failed, unknown,<br/>revoked, expired"]
+```
+
+## Sixty seconds
+
+One command creates the role's key on the agent's machine, and the agent signs from then on:
+
+```bash
+npx @optitransfer/agentkey@next init claude-code        # once per role per machine: "<kid> claude-code created"
+```
+
+Hand the agent this and nothing else:
+
+```bash
+echo '{"task":"TASK-1","status":"done"}' | npx @optitransfer/agentkey@next sign claude-code --type application/json > report.dsse.json
+```
+
+Whoever receives `report.dsse.json` checks it against the keys they trust, offline:
+
+```bash
+npx @optitransfer/agentkey@next pub claude-code > trust/claude-code.pub   # the agent's public key, shared once
+npx @optitransfer/agentkey@next verify --keys trust < report.dsse.json     # "verified <kid>", exit 0
+```
+
+Exit codes: `0` verified, `1` a trusted key's signature does not verify, `2` an unknown, revoked or expired key or missing input, `3` usage. Every command takes `--json`. To tie the role to yourself, once: `npx @optitransfer/agentkey@next bind claude-code --principal you@example.com` signs the role's public key with your SSH key, and anyone with your `allowed_signers` line can check the binding with OpenSSH alone.
+
+## Why
+
+A signature from a shared account proves nothing about who acted. A key per agent role fixes the unit of accountability at the role on a machine: `claude-code` on your laptop is one key, `claude-code` in CI is another, a review role a third. The key never leaves the machine, is never replaced by accident (`init` on an existing role reports its key and never replaces it), and is refused by `load` when its file mode is wrong. Revocation is a line in the trusted keys directory's `revoked.txt` (`agentkey revoke` writes it into `keys/` on the signing machine; a receiver adds the line to its own); expiry is a date in the key record; both are checked at verification time, so a stolen or retired key stops verifying without touching the artefacts it signed.
+
+The envelope is the standard one: DSSE with the in-toto Statement v1 inside, so the same artefact verifies with agentkey, with the sigstore verifier (`@sigstore/verify`, tested in `test/interop.test.mjs`), or with any DSSE verifier, and a receipt produced by [proofline](https://github.com/mgillr/proofline) or any other tool can carry it. The binding to a person uses OpenSSH's own signature format (`ssh-keygen -Y`), so it is checked with tools everyone has.
+
+## What a signature proves
+
+A key at rest is readable by every process of the user who owns it, so one agent can sign as another role on the same machine. A signature identifies the user's machine key set for that role, not the agent process; the binding adds the person behind that key set. `AGENTKEY_SIGNER=ssh-agent`, which keeps the private key in the agent instead of a file, is a later option.
+
+## Reference
+
+### Keys
 
 ```js
 import { generate, load, kid } from '@optitransfer/agentkey';
@@ -20,7 +67,8 @@ A key lives at `$XDG_CONFIG_HOME/agentkey/keys/<role>.key` (PKCS8 PEM, mode 0600
 
 Windows has no POSIX file modes, so `load` does not check the mode there; the key is protected by the user's access control on `%APPDATA%`.
 
-## Envelopes and Statements
+
+### Envelopes and Statements
 
 ```js
 import { load, signDSSE, verifyDSSE, statement } from '@optitransfer/agentkey';
@@ -35,7 +83,8 @@ const r = verifyDSSE(env, [key.publicKey]);   // { ok, verified, unknown, failed
 - `verifyDSSE(envelope, keys)` checks every signature against the trusted keys, given as Ed25519 public keys in any form `kid` takes, or as `{ kid, publicKey }` for a key of another type (it verifies ECDSA P-256 too, which is what DSSE's own test vector uses). Each signature's kid lands in `verified`, `unknown` (no trusted key has that keyid) or `failed` (a trusted key whose signature does not verify). `ok` is true only when at least one signature verified and none failed: a failed signature for a known key fails the whole result, and is never skipped. `payload` holds the bytes that were verified, decoded once, so use those rather than reading the envelope again. Standard and URL-safe base64 are both accepted.
 - `statement(subjects, predicateType, predicate)` returns an in-toto Statement v1, `{ _type: "https://in-toto.io/Statement/v1", subject, predicateType, predicate }`; each subject needs a non-empty `digest` map.
 
-## Command line
+
+### Command line
 
 ```sh
 agentkey init claude-code                     # once per role; prints "<kid> claude-code created"
@@ -68,7 +117,8 @@ The keys directory for `verify` holds `*.pub` files (SPKI PEM, or the base64url 
 
 A DSSE signature carries no date, so `not_after` is checked against the time of verification, which is now unless `--at` names another, such as the time a trusted log recorded the envelope. A date written next to the signature would not be signed, and the holder of the key could backdate it.
 
-## Binding to your SSH signing key
+
+### Binding the role to a person
 
 ```sh
 agentkey bind claude-code --principal ana@example.com --ssh-key ~/.ssh/id_ed25519
@@ -93,10 +143,19 @@ agentkey pub claude-code --json | jq -r .publicKey \
 
 An `allowed_signers` line for this is `ana@example.com namespaces="agentkey" ssh-ed25519 AAAA...`. `agentkey revoke` moves the binding files to `revoked/` with the key.
 
-## What a signature proves
 
-A key at rest is readable by every process of the user who owns it, so one agent can sign as another role on the same machine. An L1 signature identifies the user's machine key set for that role, not the agent process. `AGENTKEY_SIGNER=ssh-agent`, which keeps the private key in the agent instead of a file, is a later option.
+## Repository layout
+
+```text
+agentkey/
+├── bin/agentkey.mjs     the command: init, list, pub, sign, verify, bind, revoke
+├── src/index.mjs        keys (generate, load, kid), DSSE (pae, signDSSE, verifyDSSE), the Statement builder
+├── src/cli.mjs          the command line, --json, exit codes
+├── src/bind.mjs         bind and verifyBinding through ssh-keygen -Y
+├── test/                one file per feature, run with node --test
+└── proofline.json       the contract this repository is built against
+```
 
 ## Licence
 
-Apache-2.0. See `LICENSE` and `NOTICE`.
+Apache-2.0. See `LICENSE` and `NOTICE`. Contributions are accepted under the same licence with a Developer Certificate of Origin sign-off on each commit.
