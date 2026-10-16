@@ -2,7 +2,7 @@
 
 **One key per AI agent role. Every artefact the agent signs says which role made it, on which machine, bound to which person.**
 
-Coding agents act under a person's accounts: they commit as you, open pull requests as you, write files as you. When something turns out wrong, nothing in the record says which agent did it, whether it ran on your machine, or whether a person stood behind it. agentkey gives each agent role on a machine its own Ed25519 key, signs what the agent produces as a DSSE envelope or an in-toto Statement, verifies those signatures offline against a directory of trusted keys with revocation and expiry, and binds the role's key to the person's SSH key so the chain ends at a human. No runtime dependencies (`node:crypto`), Node 22+, Apache-2.0.
+Coding agents act under a person's accounts: they commit as you, open pull requests as you, write files as you. When something turns out wrong, nothing in the record says which agent did it, whether it ran on your machine, or whether a person stood behind it. agentkey gives each agent role on a machine its own Ed25519 key, signs what the agent produces as a DSSE envelope or an in-toto Statement, verifies those signatures offline against a directory of trusted keys with revocation and expiry, and binds the role's key to the person's SSH key so the chain ends at a human. No runtime dependencies (`node:crypto`; keyless Sigstore signing uses the optional `@sigstore/sign`), Node 22+, Apache-2.0.
 
 ```mermaid
 flowchart LR
@@ -175,6 +175,19 @@ agentkey pub claude-code --json | jq -r .publicKey \
 
 An `allowed_signers` line for this is `ana@example.com namespaces="agentkey" ssh-ed25519 AAAA...`. `agentkey revoke` moves the binding files to `revoked/` with the key.
 
+### Keyless signing with Sigstore (optional)
+
+```js
+import { signKeyless } from '@optitransfer/agentkey';
+
+const { envelope, bundle } = await signKeyless('application/vnd.in-toto+json', JSON.stringify(st));
+```
+
+`signKeyless(payloadType, payload, { identityToken?, fulcioURL?, rekorURL? })` signs the payload as a DSSE envelope with a short-lived Fulcio certificate issued for the CI job's OIDC identity, and records it in Rekor. It returns the envelope and the Sigstore bundle (v0.3 JSON) that carries the envelope with its verification material, which `cosign verify-blob-attestation --bundle bundle.json --new-bundle-format` checks. The identity token is `identityToken` when you pass one, else the GitHub Actions OIDC token (the job needs `permissions: id-token: write`), else `SIGSTORE_ID_TOKEN` on any other CI. It is read before anything is sent; with none, `signKeyless` throws `AGENTKEY_SIGSTORE_NO_TOKEN`.
+
+It uses `@sigstore/sign`, an optional dependency loaded on the first call. Without it, `signKeyless` throws `AGENTKEY_SIGSTORE_UNAVAILABLE` and the rest of agentkey works as before; install it with `npm install @sigstore/sign` if your package manager skipped it. The URLs default to the public Sigstore instance, where a signature is public and its certificate names the identity that signed: for a GitHub Actions job, the repository and the workflow.
+
+`.github/workflows/sigstore-interop.yml` signs a fixture Statement this way and verifies it with cosign in the same job. It runs only when started by hand, because of that public record.
 
 ## Repository layout
 
@@ -184,6 +197,7 @@ agentkey/
 ├── src/index.mjs        keys (generate, load, kid), DSSE (pae, signDSSE, verifyDSSE), the Statement builder
 ├── src/cli.mjs          the command line, --json, exit codes
 ├── src/bind.mjs         bind and verifyBinding through ssh-keygen -Y
+├── src/sigstore.mjs     signKeyless, the optional keyless Sigstore signer
 ├── test/                one file per feature, run with node --test
 └── proofline.json       the contract this repository is built against
 ```

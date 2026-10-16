@@ -213,3 +213,4 @@ export function statement(subjects, predicateType, predicate) {
 }
 
 export { bind, verifyBinding, bindingMessage } from './bind.mjs';
+export { signKeyless } from './sigstore.mjs';
