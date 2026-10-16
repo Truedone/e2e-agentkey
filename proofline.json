@@ -639,7 +639,7 @@
     },
     {
       "id": "AK-06",
-      "title": "Publish @optitransfer/agentkey@0.1.0 with provenance; small-order key check; trailer helper; interim patent statement",
+      "title": "Small-order key check; trailer helper; the release workflow with provenance",
       "phase": "release",
       "owner": "lane-b",
       "depends_on": [
@@ -652,7 +652,7 @@
         "RF-07",
         "ZR-12"
       ],
-      "description": "Port the small-order Ed25519 public key refusal from hivevault server/src/crdt.mjs:232-240 (with its test). Add trailer(kid, runId) returning the lines \"Agent-Key: <kid>\" and \"Agent-Run: <runId>\". Publish 0.1.0 to npm from a release workflow with provenance (npm publish --provenance). Record the published version and provenance URL in docs/releases.md.",
+      "description": "Port the small-order Ed25519 public key refusal from hivevault server/src/crdt.mjs:232-295 at hivevault 3c8d4e2 (the table, the canonical test and the curve test, with their tests). Add trailer(kid, runId) returning the lines \"Agent-Key: <kid>\" and \"Agent-Run: <runId>\". The release workflow publishes with provenance (npm publish --provenance) and runs on the owner-run runner label like the interop workflow; the publish of 0.1.0 itself and its record are AK-06-REL, on the owner's word.",
       "scope": {
         "allow": [
           "src/**",
@@ -701,17 +701,6 @@
           }
         },
         {
-          "id": "AK-06-AC04",
-          "mandatory": true,
-          "statement": "published version recorded",
-          "verifier": {
-            "type": "grep",
-            "file": "docs/releases.md",
-            "pattern": "@optitransfer/agentkey@0\\.1\\.0",
-            "must": "present"
-          }
-        },
-        {
           "id": "AK-06-AC05",
           "mandatory": true,
           "statement": "interim patent statement present (one paragraph: Apache-2.0 section 3 grants the licence; a fuller non-assert follows counsel review)",
@@ -751,6 +740,89 @@
       "stop_rules": [
         "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
         "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
+      ]
+    },
+    {
+      "id": "AK-06-REL",
+      "title": "Publish @optitransfer/agentkey@0.1.0 with provenance and record it",
+      "phase": "release",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-06"
+      ],
+      "requirements": [
+        "ID-07",
+        "RF-07",
+        "ZR-12"
+      ],
+      "scope": {
+        "allow": [
+          "docs/releases.md",
+          "package.json",
+          "CHANGELOG.md"
+        ]
+      },
+      "description": "On the owner's word only: the release workflow runs on main for 0.1.0 (the owner-run runner, one job, torn down after), npm shows the version with its provenance attestation, and docs/releases.md records the version, the run URL and the provenance (Sigstore transparency log) link. Whether provenance attaches on the owner-run runner is measured on this first run; if npm refuses it there, the task stops and reports the exact refusal rather than moving to a hosted runner.",
+      "criteria": [
+        {
+          "id": "AK-06-REL-AC01",
+          "statement": "the published version is recorded",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/releases.md",
+            "pattern": "@optitransfer/agentkey@0\\.1\\.0",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-06-REL-AC02",
+          "statement": "npm serves 0.1.0 with a provenance attestation",
+          "verifier": {
+            "type": "command",
+            "cmd": "node -e \"const {execFileSync}=require('node:child_process');const o=JSON.parse(execFileSync('npm',['view','@optitransfer/agentkey@0.1.0','dist','--json'],{encoding:'utf8'}));if(!o.attestations||!o.attestations.url)process.exit(1)\"",
+            "expect_exit": 0,
+            "timeout_s": 120
+          }
+        },
+        {
+          "id": "AK-06-REL-AC03",
+          "statement": "the record links the run and the transparency log entry",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/releases.md",
+            "pattern": "actions/runs/[0-9]+[\\s\\S]*(search\\.sigstore\\.dev|rekor)",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-06-REL-AC04",
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-06-REL-AC05",
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-06-REL-AC06",
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it.",
+        "The publish runs only on the owner's explicit word in chat, recorded in the task's evidence; never from a verify or a gate."
       ]
     },
     {
