@@ -32,7 +32,6 @@
     "test_file_deletion": true,
     "no_verify": true,
     "bypass_env": [
-      "HIVEVAULT_ALLOW_PUBLIC_PUSH",
       "SKIP_HOOKS",
       "HUSKY=0",
       "PROOFLINE_SKIP",
@@ -226,7 +225,7 @@
         "RF-01",
         "RF-02"
       ],
-      "description": "signDSSE(payloadType, payload, key) builds a DSSE envelope: PAE(\"DSSEv1\", payloadType, payload) per the DSSE spec, Ed25519 signature, signatures[0].keyid = kid. verifyDSSE(envelope, keys) returns {verified:[kid...], unknown:[kid...], failed:[kid...]}; a signature that fails for a KNOWN key makes the whole result failed:true (never silently ignored). statement(subjects, predicateType, predicate) returns an in-toto Statement v1 ({\"_type\":\"https://in-toto.io/Statement/v1\", subject, predicateType, predicate}). Publish agentkey@0.1.0-next.0 under dist-tag next (provenance) at the end of this task; later tasks republish under next. Test vectors: the DSSE repository protocol test vectors (vendored under test/vectors/ with their licence), plus an interop test that an envelope signed here verifies with the sigstore npm package verifier in a devDependency-only test.",
+      "description": "signDSSE(payloadType, payload, key) builds a DSSE envelope: PAE(\"DSSEv1\", payloadType, payload) per the DSSE spec, Ed25519 signature, signatures[0].keyid = kid. verifyDSSE(envelope, keys) returns {verified:[kid...], unknown:[kid...], failed:[kid...]}; a signature that fails for a KNOWN key makes the whole result failed:true (never silently ignored). statement(subjects, predicateType, predicate) returns an in-toto Statement v1 ({\"_type\":\"https://in-toto.io/Statement/v1\", subject, predicateType, predicate}). Publish @optitransfer/agentkey@0.1.0-next.0 under dist-tag next with --access public from the maintainer machine, without provenance: npm generates it only inside a CI runner, and GitHub Actions on this account is locked by billing, so the release workflow of AK-06 carries it. Test vectors: the DSSE repository protocol test vectors (vendored under test/vectors/ with their licence), plus an interop test that an envelope signed here verifies with the sigstore npm package verifier in a devDependency-only test.",
       "scope": {
         "allow": [
           "src/**",
@@ -271,10 +270,10 @@
         {
           "id": "AK-02-AC04",
           "mandatory": true,
-          "statement": "agentkey@next published with provenance so proofline and hivevault can depend on it before 0.1.0",
+          "statement": "@optitransfer/agentkey@next published so proofline and hivevault can depend on it before 0.1.0; provenance arrives with the release workflow of AK-06, since GitHub Actions on this account is locked by billing",
           "verifier": {
             "type": "command",
-            "cmd": "sh -c \"npm view agentkey@next version | grep -q 0.1.0-next\"",
+            "cmd": "sh -c \"npm view @optitransfer/agentkey@next version | grep -q 0.1.0-next\"",
             "expect_exit": 0,
             "timeout_s": 1800
           }
@@ -494,6 +493,7 @@
           "src/index.mjs",
           "test/**",
           ".github/**",
+          "docs/sigstore-interop-run.json",
           "package.json",
           "README.md",
           "CHANGELOG.md"
@@ -578,7 +578,7 @@
     },
     {
       "id": "AK-06",
-      "title": "Publish agentkey@0.1.0 with provenance; small-order key check; trailer helper; interim patent statement",
+      "title": "Publish @optitransfer/agentkey@0.1.0 with provenance; small-order key check; trailer helper; interim patent statement",
       "phase": "release",
       "owner": "lane-b",
       "depends_on": [
@@ -600,7 +600,10 @@
           "docs/**",
           "package.json",
           "README.md",
-          "CHANGELOG.md"
+          "CHANGELOG.md",
+          "PATENTS-NONASSERT.md",
+          "NOTICE",
+          "CONTRIBUTING.md"
         ]
       },
       "criteria": [
@@ -642,7 +645,7 @@
           "verifier": {
             "type": "grep",
             "file": "docs/releases.md",
-            "pattern": "agentkey@0\\.1\\.0",
+            "pattern": "@optitransfer/agentkey@0\\.1\\.0",
             "must": "present"
           }
         },
@@ -689,5 +692,5 @@
       ]
     }
   ],
-  "notes": "Pre-existing hivevault tasks are owned by backlog so next --owner hands out only this programme. Generated from the handoff document \"hivevault - explode and become indispensable\" (15 Oct 2026) by gen-contracts.py. Owners: lane-a (lead: hivevault, programme), lane-b (agentkey, proofline-action, HV-07, HV-08), lane-c (proofline)."
+  "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent."
 }
