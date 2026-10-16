@@ -207,11 +207,15 @@ function privateKeyOf(key) {
 }
 
 // one DSSE envelope with exactly one Ed25519 signature, its keyid the signer's kid; payload is a string or bytes
+// key is the result of load(role) (or an Ed25519 private key), or a signer whose private key is elsewhere, such as
+// agentSigner(role): { kid, sign(bytes) -> 64-byte Ed25519 signature }
 export function signDSSE(payloadType, payload, key) {
-  const k = privateKeyOf(key);
   const body = asBytes(payload, 'payload');
-  const sig = crypto.sign(null, pae(payloadType, body), k);
-  return { payloadType, payload: body.toString('base64'), signatures: [{ keyid: kid(k), sig: sig.toString('base64') }] };
+  const data = pae(payloadType, body);
+  let sig, id;
+  if (key && typeof key.sign === 'function' && typeof key.kid === 'string') { sig = Buffer.from(key.sign(data)); id = key.kid; }
+  else { const k = privateKeyOf(key); sig = crypto.sign(null, data, k); id = kid(k); }
+  return { payloadType, payload: body.toString('base64'), signatures: [{ keyid: id, sig: sig.toString('base64') }] };
 }
 
 // DSSE allows standard and URL-safe base64, and a verifier must accept both
@@ -285,3 +289,5 @@ export function statement(subjects, predicateType, predicate) {
 export { bind, verifyBinding, bindingMessage } from './bind.mjs';
 export { setup } from './setup.mjs';
 export { signKeyless } from './sigstore.mjs';
+export { agentAdd, agentSigner } from './agent.mjs';
+export { rotate, ROTATION_TYPE } from './rotate.mjs';
