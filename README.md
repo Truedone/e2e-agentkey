@@ -85,7 +85,9 @@ The envelope is the standard one: DSSE with the in-toto Statement v1 inside, so 
 
 ## What a signature proves
 
-A key at rest is readable by every process of the user who owns it, so one agent can sign as another role on the same machine. A signature identifies the user's machine key set for that role, not the agent process; the binding adds the person behind that key set. `AGENTKEY_SIGNER=ssh-agent`, which keeps the private key in the agent instead of a file, is a later option.
+A role key identifies the user's key for that role on that machine, not a unique agent process. A key at rest is readable by every process of the user who owns it, so one agent can sign as another role on the same machine: a signature identifies the user's machine key set for that role, and the binding adds the person behind that key set. To narrow who can sign, `AGENTKEY_SIGNER=ssh-agent` signs through ssh-agent instead of the file: `agentkey agent-add <role> --remove` hands the key to the agent with per-use confirmation (as `ssh-add -c`) and deletes the file, and each signature then waits for a person to confirm it. `sign --json` says which signer made a signature (`signer: file` or `ssh-agent`). [docs/identity.md](docs/identity.md) lists every isolation option and what each gives, from one OS user per agent to a hardware key.
+
+`agentkey rotate <role>` moves the role to a new key and writes a rotation statement, signed by the old key, under `rotations/`; a receiver that puts the statement in its trust directory accepts the new key, and the old key expires at the rotation date. A rotated role is unbound until `agentkey bind` runs again for the new key.
 
 ## How it fits
 
