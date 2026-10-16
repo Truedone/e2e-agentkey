@@ -1,9 +1,11 @@
-// the agentkey command line: init, list, pub, sign, verify and revoke, each with --json. Exit codes: 0 ok, 1 a
+// the agentkey command line: init, list, pub, sign, verify, bind and revoke, each with --json. Exit codes: 0 ok, 1 a
 // signature failed to verify, 2 an unknown, revoked or expired key or missing input, 3 usage
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { AgentkeyError, home, keyPaths, kid, generate, load, signDSSE, verifyDSSE } from './index.mjs';
+import { bind } from './bind.mjs';
 
 export const EXIT = { ok: 0, failed: 1, key: 2, usage: 3 };
 
@@ -13,6 +15,8 @@ const USAGE = `usage: agentkey <command> [--json]
   pub <role>                     the role's public key as SPKI PEM
   sign <role> --type <type>      sign stdin as a DSSE envelope of that payload type, written to stdout
   verify --keys <dir> [--at <t>] verify the DSSE envelope on stdin against the keys in <dir>
+  bind <role> --principal <id> [--ssh-key <path>]
+                                 sign the role's public key with your SSH key (default ~/.ssh/id_ed25519)
   revoke <role>                  move the role's key to revoked/ and list its kid in revoked.txt
 exit codes: 0 ok, 1 verification failed, 2 unknown, revoked or expired key or missing input, 3 usage`;
 
@@ -21,8 +25,8 @@ class Exit extends Error {
 }
 const usage = (message) => new Exit(EXIT.usage, 'usage', message);
 
-// argv after the command: positionals, and --json, --type, --keys and --at (as "--x v" or "--x=v")
-const TAKES = new Set(['type', 'keys', 'at']);
+// argv after the command: positionals, and --json, --type, --keys, --at, --principal and --ssh-key (as "--x v" or "--x=v")
+const TAKES = new Set(['type', 'keys', 'at', 'principal', 'ssh-key']);
 function parse(args) {
   const out = { _: [], json: false };
   for (let i = 0; i < args.length; i++) {
@@ -208,8 +212,16 @@ const commands = {
     const text = r.reason === 'verified' ? `verified ${r.verified.join(' ')}` : `${r.reason} ${(kids[r.reason] ?? []).map((k) => k ?? '(no keyid)').join(' ')}`.trimEnd();
     return { exit: r.exit, result: { ok: r.ok, reason: r.reason, ...kids, payloadType: r.payloadType, payload: r.payload.toString('base64') }, text };
   },
+  bind(a, ctx) {
+    if (a._.length !== 1) throw usage('bind takes one role');
+    if (!a.principal) throw usage('bind needs --principal <id>, the identity your allowed_signers line names');
+    const sshKey = a['ssh-key'] ?? path.join(ctx.env.HOME || os.homedir(), '.ssh', 'id_ed25519');
+    const b = bind(a._[0], sshKey, a.principal, ctx.opts);
+    return { result: { ok: true, role: b.role, kid: b.kid, principal: b.principal, sshKey, sig: b.sig, principalFile: b.principalFile }, text: `${b.kid} ${b.role} bound to ${b.principal}` };
+  },
   // the kid is listed in revoked.txt (and synced to disk) before the key moves, so a move that fails leaves the kid
-  // revoked; the files go to <home>/revoked/<kid>.key and .pub, which a later key for the same role never collides with
+  // revoked; the files go to <home>/revoked/<kid>.key and .pub, with the binding (.pub.sshsig, .pub.principal) when
+  // there is one, which a later key for the same role never collides with
   revoke(a, ctx) {
     if (a._.length !== 1) throw usage('revoke takes one role');
     const role = a._[0];
@@ -226,7 +238,7 @@ const commands = {
     try { fs.writeSync(fd, `${id} ${date}\n`); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     const dir = path.join(h, 'revoked');
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    for (const [from, ext] of [[p.key, 'key'], [p.pub, 'pub']]) {
+    for (const [from, ext] of [[p.key, 'key'], [p.pub, 'pub'], [`${p.pub}.sshsig`, 'pub.sshsig'], [`${p.pub}.principal`, 'pub.principal']]) {
       const to = path.join(dir, `${id}.${ext}`);
       if (fs.existsSync(to)) throw new Exit(EXIT.key, 'exists', `${to} already exists; ${from} was left in place`);
       if (fs.existsSync(from)) fs.renameSync(from, to);
@@ -255,8 +267,8 @@ export function run(argv, { io = {}, env = process.env, opts = {}, now } = {}) {
     // any other error (a file it cannot read, say) exits 2 as well, never 1, which means only a failed signature
     let code = e instanceof Exit ? e.exit : EXIT.key, reason = e instanceof Exit ? e.reason : 'error';
     if (e instanceof AgentkeyError) {
-      reason = { AGENTKEY_MISSING: 'missing', AGENTKEY_ROLE: 'usage', AGENTKEY_INSECURE: 'insecure', AGENTKEY_INVALID: 'invalid' }[e.code] ?? e.code;
-      if (e.code === 'AGENTKEY_ROLE') code = EXIT.usage;
+      reason = { AGENTKEY_MISSING: 'missing', AGENTKEY_ROLE: 'usage', AGENTKEY_PRINCIPAL: 'usage', AGENTKEY_INSECURE: 'insecure', AGENTKEY_INVALID: 'invalid', AGENTKEY_SSH: 'ssh', AGENTKEY_SSH_UNAVAILABLE: 'ssh' }[e.code] ?? e.code;
+      if (e.code === 'AGENTKEY_ROLE' || e.code === 'AGENTKEY_PRINCIPAL') code = EXIT.usage;
     }
     if (a.json) out(`${JSON.stringify({ ok: false, reason, error: e.message })}\n`);
     else err(`agentkey: ${e.message}${code === EXIT.usage ? `\n${USAGE}` : ''}\n`);

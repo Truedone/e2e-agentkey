@@ -52,7 +52,8 @@ agentkey revoke claude-code                   # the key moves to revoked/, its k
 | `pub <role>` | The role's public key as SPKI PEM. |
 | `sign <role> --type <payloadType>` | Signs stdin and writes the DSSE envelope to stdout. |
 | `verify --keys <dir> [--at <date>]` | Verifies the DSSE envelope on stdin against the keys in `<dir>`. |
-| `revoke <role>` | Appends `<kid> <ISO date>` to `keys/revoked.txt`, then moves the key and its `.pub` to `revoked/<kid>.key` and `.pub`. |
+| `bind <role> --principal <id> [--ssh-key <path>]` | Signs the role's public key with your SSH key (default `~/.ssh/id_ed25519`); see below. |
+| `revoke <role>` | Appends `<kid> <ISO date>` to `keys/revoked.txt`, then moves the key, its `.pub` and its binding to `revoked/<kid>.key`, `.pub`, `.pub.sshsig` and `.pub.principal`. |
 
 Every command takes `--json` and then writes one JSON object to stdout, errors included (`{ "ok": false, "reason", "error" }`). The exit codes are:
 
@@ -66,6 +67,31 @@ Every command takes `--json` and then writes one JSON object to stdout, errors i
 The keys directory for `verify` holds `*.pub` files (SPKI PEM, or the base64url of the 32 raw bytes) and `*.json` key records `{ "publicKey": ..., "not_after": "<ISO date>" }`, read recursively, and `revoked.txt` at its top. The role's own `keys/` directory is one. `verify` reports, in this order: `failed` (exit 1), then `revoked` and `expired` (exit 2) when a signature verified from a key that `revoked.txt` lists or whose `not_after` has passed, then `verified` (exit 0), then `unknown` (exit 2). A signature that names a revoked kid whose key is no longer in the directory counts as revoked. A key record that cannot be read, or a `not_after` that is not an ISO date, is an error (exit 2), so a limit is never dropped without notice. Two files for one key keep the earlier `not_after`.
 
 A DSSE signature carries no date, so `not_after` is checked against the time of verification, which is now unless `--at` names another, such as the time a trusted log recorded the envelope. A date written next to the signature would not be signed, and the holder of the key could backdate it.
+
+## Binding to your SSH signing key
+
+```sh
+agentkey bind claude-code --principal ana@example.com --ssh-key ~/.ssh/id_ed25519
+```
+
+```js
+import { bind, verifyBinding } from '@optitransfer/agentkey';
+
+bind('claude-code', '/home/ana/.ssh/id_ed25519', 'ana@example.com');
+verifyBinding('/home/ana/.config/agentkey/keys/claude-code.pub', '/home/ana/.ssh/allowed_signers');
+// { status: 'bound', kid, principal: 'ana@example.com' }
+```
+
+`bind(role, sshKeyPath, principal)` runs `ssh-keygen -Y sign -n agentkey -f <sshKey>` over the agent's public key and stores the signature as `<role>.pub.sshsig` and the principal as `<role>.pub.principal`, beside `<role>.pub`. The SSH key can be a private key, or a public key whose private half is in ssh-agent. `verifyBinding(pub, allowedSignersPath, principal?)` runs `ssh-keygen -Y verify -n agentkey -I <principal> -f <allowedSigners>` and returns `status` `bound` (it verifies), `unbound` (there is no `.sshsig`) or `invalid` (there is one and it does not verify: tampered, made by a key the file does not allow, for another principal, or over a different agent key), with `reason` holding what ssh-keygen said. The principal is the one stored beside the key unless you pass one. ssh-keygen does the signing and the checking, so the signature format and the `allowed_signers` rules, `namespaces=` included, are OpenSSH's. This needs OpenSSH 8.0 or later; without ssh-keygen on `PATH`, `bind` throws `AGENTKEY_SSH_UNAVAILABLE`.
+
+The signed message is the agent public key as the base64url of its 32 raw bytes followed by a newline, the `publicKey` that `agentkey pub <role> --json` prints, so you can check a binding with OpenSSH alone:
+
+```sh
+agentkey pub claude-code --json | jq -r .publicKey \
+  | ssh-keygen -Y verify -n agentkey -I ana@example.com -f ~/.ssh/allowed_signers -s claude-code.pub.sshsig
+```
+
+An `allowed_signers` line for this is `ana@example.com namespaces="agentkey" ssh-ed25519 AAAA...`. `agentkey revoke` moves the binding files to `revoked/` with the key.
 
 ## What a signature proves
 

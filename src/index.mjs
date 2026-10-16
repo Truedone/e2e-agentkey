@@ -211,3 +211,5 @@ export function statement(subjects, predicateType, predicate) {
   if (typeof predicateType !== 'string' || !predicateType) throw new AgentkeyError('AGENTKEY_INVALID', 'predicateType is a URI string');
   return { _type: 'https://in-toto.io/Statement/v1', subject: subjects, predicateType, predicate };
 }
+
+export { bind, verifyBinding, bindingMessage } from './bind.mjs';
