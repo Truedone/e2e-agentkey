@@ -1,0 +1,46 @@
+# Publishes @optitransfer/agentkey to npm with provenance. Started by hand only, with the version to publish, which
+# must be the version in package.json on the commit it runs on; the suite runs first and the publish happens only when
+# it passes. npm makes the provenance statement from this job's OIDC identity, signed through Sigstore and recorded in
+# the public transparency log; the statement's builder id names the runner kind (github-hosted or self-hosted). The
+# runner is the repository variable RUNNER_LABEL, or GitHub's ubuntu-latest where it is not set (a fork, or any
+# repository without it). The npm token is the repository secret NPM_TOKEN.
+name: release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: the version to publish, as it stands in package.json (for example 0.1.0)
+        required: true
+        type: string
+      tag:
+        description: the npm dist-tag (latest for a release, next for a prerelease)
+        required: true
+        type: string
+        default: latest
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  publish:
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: the version asked for is the one in package.json
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          have=$(node -p "require('./package.json').version")
+          test "$have" = "$VERSION" || { echo "::error::package.json says $have, the run asked for $VERSION"; exit 1; }
+      - run: npm install --no-save --no-audit --no-fund
+      - run: npm test
+      - name: publish with provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: npm publish --provenance --access public --tag "$TAG"

@@ -132,6 +132,20 @@ const r = verifyDSSE(env, [key.publicKey]);   // { ok, verified, unknown, failed
 - `statement(subjects, predicateType, predicate)` returns an in-toto Statement v1, `{ _type: "https://in-toto.io/Statement/v1", subject, predicateType, predicate }`; each subject needs a non-empty `digest` map.
 
 
+### Keys that are never trusted
+
+Eight points of the Ed25519 curve have a small order, and under one of them a signature made with no private key verifies: under the identity key, one fixed value passes for every message. Node imports those keys and accepts that value. agentkey refuses them wherever a public key enters (`kid`, the trusted keys of `verifyDSSE`, a trust directory for `agentkey verify --keys`, `bindingMessage`) with `AGENTKEY_UNSAFE_KEY`, as libsodium does: its table of the seven blocked encodings, a second spelling of a point (a y at or past 2^255 - 19, or a base64url string with nonzero padding bits), and 32 bytes that are no point of the curve. `publicKeyProblem(bytes)` says which, or `null`. The check is the one hivevault applies to its replica keys.
+
+### Commit trailers
+
+```js
+import { trailer } from '@optitransfer/agentkey';
+
+trailer(key.kid, process.env.GITHUB_RUN_ID);   // "Agent-Key: k…\nAgent-Run: 123456"
+```
+
+The two lines go in the last paragraph of a commit message an agent role made (or through `git commit --trailer`), so `git interpret-trailers --parse` and any reviewer can read which role's key and which run produced it. A kid that is not `k` and 16 hex, or a run id with a space or a line break, is refused, so neither can open another trailer.
+
 ### Command line
 
 ```sh
