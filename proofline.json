@@ -2382,7 +2382,84 @@
         "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
         "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
       ]
+    },
+    {
+      "id": "AK-REL011",
+      "title": "The changelog dates the 0.1.1 release",
+      "phase": "release",
+      "owner": "lane-a",
+      "depends_on": [
+        "AK-PEER"
+      ],
+      "requirements": [
+        "ID-07",
+        "RF-07",
+        "ZR-12"
+      ],
+      "scope": {
+        "allow": [
+          "CHANGELOG.md"
+        ]
+      },
+      "description": "Owner order of 2026-10-17: the owner published @optitransfer/agentkey@0.1.1 to npm that day from commit 59eb63ce860234a44d5ba01ef1e6b9d2cc1875a7 (tarball shasum a4f629974f43deab2a64966d545d300ba4172a1c), and the tag v0.1.1 marks that commit. CHANGELOG.md's \"## Unreleased\" heading becomes \"## 0.1.1 (2026-10-17)\", with its entries unchanged, so the changelog names the release npm carries. No empty Unreleased heading is added; the next change adds one. No other file changes.",
+      "criteria": [
+        {
+          "id": "AK-REL011-AC01",
+          "mandatory": true,
+          "statement": "CHANGELOG.md dates the 0.1.1 release",
+          "verifier": {
+            "type": "grep",
+            "file": "CHANGELOG.md",
+            "pattern": "^## 0\\.1\\.1 \\(2026-10-17\\)$",
+            "must": "present",
+            "flags": "m"
+          }
+        },
+        {
+          "id": "AK-REL011-AC02",
+          "mandatory": true,
+          "statement": "no Unreleased heading is left over the published entries",
+          "verifier": {
+            "type": "grep",
+            "file": "CHANGELOG.md",
+            "pattern": "^## Unreleased$",
+            "must": "absent",
+            "flags": "m"
+          }
+        },
+        {
+          "id": "AK-REL011-AC03",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-REL011-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-REL011-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
+      ]
     }
   ],
-  "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. | 2026-10-17: 8 review tasks appended (COVERAGE.md maps every finding and open issue). Scope criterion added to AK-00, DG-AK so the contract passes its own validator. | 2026-10-17: AK-PEER appended (the owner's HV-12 decision): agentkey 0.1.1 makes @sigstore/sign an optional peer dependency, so a plain install fetches no Sigstore package."
+  "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. | 2026-10-17: 8 review tasks appended (COVERAGE.md maps every finding and open issue). Scope criterion added to AK-00, DG-AK so the contract passes its own validator. | 2026-10-17: AK-PEER appended (the owner's HV-12 decision): agentkey 0.1.1 makes @sigstore/sign an optional peer dependency, so a plain install fetches no Sigstore package. | 2026-10-17: AK-REL011 appended (the owner published 0.1.1): the changelog dates the release."
 }
