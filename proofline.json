@@ -117,6 +117,14 @@
           }
         },
         {
+          "id": "AK-00-AC-SCOPE",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
           "id": "AK-00-AC04",
           "mandatory": true,
           "statement": "Committed and pushed to main",
@@ -277,7 +285,7 @@
           "statement": "@optitransfer/agentkey@next published so proofline and hivevault can depend on it before 0.1.0; provenance arrives with the release workflow of AK-06, since GitHub Actions on this account is locked by billing",
           "verifier": {
             "type": "command",
-            "cmd": "sh -c \"npm view @optitransfer/agentkey@next version | grep -q 0.1.0-next\"",
+            "cmd": "sh -c 'npm view @optitransfer/agentkey@next version | grep -q 0.1.0-next'",
             "expect_exit": 0,
             "timeout_s": 1800
           }
@@ -1055,6 +1063,14 @@
           }
         },
         {
+          "id": "DG-AK-AC-SCOPE",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
           "id": "DG-AK-AC14",
           "mandatory": true,
           "statement": "Committed and pushed to main",
@@ -1538,7 +1554,798 @@
         "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
         "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
       ]
+    },
+    {
+      "id": "AK-R01",
+      "title": "One public-key source: .pub is derived from .key and refused when it differs",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [],
+      "requirements": [
+        "RV-AK1",
+        "RVI-AK-F03"
+      ],
+      "description": "Review 17 Oct, High 3 (earlier issue (b), not fixed). Add loadPublic(role) in src/index.mjs that opens .key with the existing O_NOFOLLOW/0600 checks, derives the public key, and throws AGENTKEY_CONFLICT when the .pub on disk differs. Replace every direct read of a role's own .pub: agent.mjs:62, bind.mjs:51, cli.mjs:197 (pub), cli.mjs:266 (revoke), setup.mjs:107. setup.mjs:118 reads the trust directory's copy (t.pub), which has no .key to derive from; it goes through a named readTrustedPub() and is not a loadPublic call. Test: copy B.pub over A.pub, then pub/list/revoke/bind/agent-sign A each exit with AGENTKEY_CONFLICT and change nothing.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-R01-AC01",
+          "mandatory": true,
+          "statement": "pub, list, revoke, bind and the agent signer refuse a .pub that disagrees with .key, and revoke never revokes the other kid",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/pub_consistency.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-R01-AC02",
+          "mandatory": true,
+          "statement": "no direct .pub reads remain outside loadPublic",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c '! grep -nE \"readFileSync\\([^)]*\\.pub\" src/*.mjs | grep -vE \"loadPublic|readTrustedPub\"'",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-R01-AC03",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-R01-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-R01-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "AK-R02",
+      "title": "Rotation cannot extend trust: no rotation from an expired, revoked or already-rotated signer; limits carried over",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-R01"
+      ],
+      "requirements": [
+        "RV-AK2",
+        "RVI-AK-F01"
+      ],
+      "description": "Review High 1. In src/rotate.mjs rotationsIn: refuse a rotation statement whose date is after the signer's not_after or revocation; allow exactly one successor per old kid (a second statement from the same kid is AGENTKEY_FORK and trusts neither); the successor inherits the signer's not_after unless the statement sets an earlier one. Reproductions from the review become tests: expired B signs B->evil (must not verify), real rotate A then A->evil (must not verify).",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-R02-AC01",
+          "mandatory": true,
+          "statement": "expired-signer rotation, forked rotation and limit carry-over are refused or applied as specified",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/rotate_trust.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-R02-AC02",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-R02-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-R02-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "AK-R03",
+      "title": "rotate and revoke destroy the old private key",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-R02"
+      ],
+      "requirements": [
+        "RV-AK3",
+        "RVI-AK-F02"
+      ],
+      "description": "Review High 2. After the rotation statement is signed and written, unlink the old .key (overwrite is not required; unlink plus fsync of the directory). revoke deletes the .key instead of moving it into revoked/. Keep the old .pub for verification. README line 63 (\"never copied\") becomes true.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-R03-AC01",
+          "mandatory": true,
+          "statement": "after rotate and after revoke no private key file for the old kid exists anywhere under the agentkey home",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/no_retained_keys.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-R03-AC03",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-R03-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-R03-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "AK-R04",
+      "title": "Safe writes and loads: no symlink following, atomic writes, directory and owner checks",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-R01"
+      ],
+      "requirements": [
+        "RV-AK4",
+        "RVI-AK-F05",
+        "RVI-AK-F11"
+      ],
+      "description": "Review Medium 5 (earlier issue (c), partly fixed). One writeAtomic(path, data, mode) in src/fsx.mjs: temp file in the same directory opened wx, fsync, rename. Use it for .pub, .sshsig, .principal, revoked.txt, rotation statements and the .key/.pub pair (pair written as temp files then renamed, .key last). On load: lstat every path component from the agentkey home down and refuse a symlink or a group/world-writable directory; refuse a key file whose st.uid differs from process.getuid() (skip on win32). Windows reserved names, trailing dots/spaces refused in keyPaths.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-R04-AC01",
+          "mandatory": true,
+          "statement": "a planted .pub symlink is not followed, a symlinked or 0777 parent directory is refused, a key owned by another uid is refused, reserved names are refused",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/fs_safety.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-R04-AC02",
+          "mandatory": true,
+          "statement": "every write in src goes through writeAtomic",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c '! grep -nE '\\''writeFileSync\\('\\'' src/*.mjs | grep -v fsx.mjs'",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-R04-AC03",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-R04-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-R04-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "AK-R05",
+      "title": "verify checks what the README promises: --require-binding, expected payload type, honest exits",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-R01"
+      ],
+      "requirements": [
+        "RV-AK5",
+        "RVI-AK-F04",
+        "RVI-AK-F09",
+        "RVI-AK-F10",
+        "RVI-AK-F11"
+      ],
+      "description": "Review Medium 4, Low 9, Low 11. verify gains --require-binding (runs verifyBinding for each verified kid; unbound -> exit 2 \"not vouched for\") and --type <payloadType> (mismatch -> exit 1). A failing extra signature next to a verified trusted one is reported as a warning with exit 0, not the tamper exit. Duplicate keys in a JSON payload are refused when --type is application/json. A kid that maps to two different keys in the trust dir is refused (AGENTKEY_KID_COLLISION), never silently dropped. README: exit 0 means \"verified\"; \"vouched for\" only with --require-binding.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-R05-AC01",
+          "mandatory": true,
+          "statement": "binding required and missing -> exit 2; type mismatch -> exit 1; extra bad signature -> warning, exit 0; duplicate JSON keys refused; kid collision refused",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/verify_policy.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-R05-AC02",
+          "mandatory": true,
+          "statement": "README no longer says exit 0 means vouched for without the flag",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c 'grep -q -- \"--require-binding\" README.md && ! grep -q \"Exit 0 means: this role, unaltered, vouched for\" README.md'",
+            "expect_exit": 0,
+            "timeout_s": 60
+          }
+        },
+        {
+          "id": "AK-R05-AC03",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-R05-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-R05-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "AK-R06",
+      "title": "Trailers bound to the commit; keyless verify with identity pinning",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-R05"
+      ],
+      "requirements": [
+        "RV-AK6",
+        "RVI-AK-F07",
+        "RVI-AK-F08"
+      ],
+      "description": "Review Low 8 and Medium 7. agentkey commit-sign <role> [--commit HEAD] signs an in-toto Statement whose subject is {gitCommit: <sha>} and writes it as a git note under refs/notes/agentkey; agentkey commit-verify <sha> --keys <dir> checks note, subject and key. The trailer stays a pointer and the README says so. Add verifyKeyless(bundle, {issuer, san}) using the optional @sigstore/verify; the README gains a cosign verify-blob command with --certificate-identity and --certificate-oidc-issuer, the values sigstore-interop.yml:25-28 already pins.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "docs/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-R06-AC01",
+          "mandatory": true,
+          "statement": "a signature replayed onto another commit fails commit-verify; a forged trailer with no note fails",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/commit_binding.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-R06-AC02",
+          "mandatory": true,
+          "statement": "keyless verify refuses a bundle from the wrong identity",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/keyless_identity.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-R06-AC03",
+          "mandatory": true,
+          "statement": "README cosign command pins identity",
+          "verifier": {
+            "type": "grep",
+            "file": "README.md",
+            "pattern": "certificate-oidc-issuer",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-R06-AC04",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-R06-AC05",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-R06-AC06",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "AK-R07",
+      "title": "The suite runs on a clean machine; the quickstart installs the release",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [],
+      "requirements": [
+        "RV-AK7",
+        "RVI-AK-F12",
+        "RVI-AK-F13"
+      ],
+      "description": "Review: 28 of 74 tests fail without ssh-keygen or without npm install, as 28 unrelated-looking failures. Do not add skips (the forbidden scan refuses them). Add scripts/pretest.mjs, run as \"pretest\": it checks for ssh-keygen on PATH and for the @sigstore dev dependencies, and exits 1 with ONE line naming what is missing and the command that installs it. CONTRIBUTING lists the two prerequisites. README and docs drop @next from every npx command (next points at 0.1.0-next.1, older than latest). pretest checks the dev dependencies @sigstore/bundle and @sigstore/verify; @sigstore/sign is optional and is not required.",
+      "scope": {
+        "allow": [
+          "scripts/**",
+          "package.json",
+          "README.md",
+          "docs/**",
+          "CONTRIBUTING.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-R07-AC01",
+          "mandatory": true,
+          "statement": "with ssh-keygen hidden from PATH, npm test exits non-zero in pretest, exactly one line names ssh-keygen, and no test runs",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c 'd=$(mktemp -d); ln -s $(command -v node) $d/node; ln -s $(command -v npm) $d/npm; out=$(PATH=$d npm test 2>&1); rc=$?; [ $rc -ne 0 ] && [ \"$(printf \"%s\\n\" \"$out\" | grep -c ssh-keygen)\" -eq 1 ] && ! printf \"%s\\n\" \"$out\" | grep -qE \"^[#ℹ] *tests \"'",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-R07-AC02",
+          "mandatory": true,
+          "statement": "no @next in user-facing commands",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c '! grep -rn '\\''agentkey@next'\\'' README.md docs'",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-R07-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-R07-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "AK-R08",
+      "title": "README claims match the code",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-R03",
+        "AK-R05",
+        "AK-R06"
+      ],
+      "requirements": [
+        "RV-AK8",
+        "RVI-AK-F14"
+      ],
+      "description": "Review \"README claims vs the code\". Line 3: drop \"on which machine\" unless a machine id is signed. \"never copied\": true after AK-R03. \"vouched for\": only with --require-binding. Trailers: \"a pointer, checked by commit-verify\". Repository layout lists setup, agent, rotate and agent-io. No new claim without a test that proves it.",
+      "scope": {
+        "allow": [
+          "README.md",
+          "docs/**",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-R08-AC01",
+          "mandatory": true,
+          "statement": "no claim of machine identity",
+          "verifier": {
+            "type": "grep",
+            "file": "README.md",
+            "pattern": "on which machine",
+            "must": "absent"
+          }
+        },
+        {
+          "id": "AK-R08-AC02",
+          "mandatory": true,
+          "statement": "layout lists every src module",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c 'for m in src/setup.mjs src/agent.mjs src/rotate.mjs src/agent-io.mjs; do grep -qF \"$m\" README.md || exit 1; done'",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-R08-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-R08-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "AK-R09",
+      "title": "Interop: verify AgentDiff trace signatures and Alien Agent ID commits",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-R01",
+        "AK-R06"
+      ],
+      "requirements": [
+        "RV-AK9",
+        "RVI-AK-G02"
+      ],
+      "description": "Review (4), agentkey \"how it grows\": \"Interop is the product ... verify AgentDiff and Alien Agent ID signatures, emit a trailer they read.\" Two formats, each pinned to a fixture made by the tool itself (its version or commit and the exact command recorded in test/fixtures/interop/README.md), never by agentkey. (1) AgentDiff (codeprakhar25/agentdiff): its key_id is the first 16 hex of SHA-256 of the public key; agentkey's kid is \"k\" + the first 16 hex of SHA-256 of the raw 32-byte key (src/index.mjs:60-61); the builder confirms which bytes agentdiff hashes from its source at the pinned version. agentkey pub <role> --agentdiff-id prints the key in that form; agentkey verify-agentdiff <traces.jsonl> --keys <dir> checks each record's signature against the trust directory, with its revocation and not_after and the same exit codes as verify. (2) Alien Agent ID (alien-id/agent-id): commits carry Agent-ID-JKT: <RFC 7638 thumbprint of the Ed25519 JWK> and are SSH-signed; agentkey pub <role> --jkt prints that thumbprint; agentkey verify-agent-id --commit <sha> --keys <dir> checks the SSH commit signature, the JKT trailer against the thumbprint, the key in the trust directory, and its revocation and expiry, and reports the Agent-ID-Owner trailer as unchecked. Not in this task: asking the maintainers to read agentkey's format (outreach, owner) and the package name (RV-00). Owner flag: the fixtures need the two tools installed once on the builder's machine, each in a scratch-HOME window of its own.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "bin/**",
+          "test/**",
+          "README.md",
+          "docs/**",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-R09-AC01",
+          "mandatory": true,
+          "statement": "a trace record agentdiff signed with a trusted key verifies; one changed payload byte fails (exit 1); a revoked key exits 2; pub --agentdiff-id equals the fixture key_id",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/interop_agentdiff.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-R09-AC02",
+          "mandatory": true,
+          "statement": "a commit agent-id signed verifies with its JWK in the trust directory; a JKT trailer naming another key fails; pub --jkt equals the fixture Agent-ID-JKT; Agent-ID-Owner is reported unchecked, never verified",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/interop_agent_id.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-R09-AC03",
+          "mandatory": true,
+          "statement": "the fixtures name the tool version or commit that made them",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c 'test -s test/fixtures/interop/README.md && grep -qE \"agentdiff (0\\.|[0-9a-f]{7,40})\" test/fixtures/interop/README.md && grep -qE \"agent-id [0-9a-f]{7,40}\" test/fixtures/interop/README.md'",
+            "expect_exit": 0,
+            "timeout_s": 60
+          }
+        },
+        {
+          "id": "AK-R09-AC04",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-R09-AC05",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-R09-AC06",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
+    },
+    {
+      "id": "AK-R10",
+      "title": "Expiry is judged at the signature's trusted time, not the verifier's clock",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [
+        "AK-R02",
+        "AK-R05",
+        "AK-LOCK"
+      ],
+      "requirements": [
+        "RV-AK10",
+        "RVI-AK-F06",
+        "RVI-AK-G01"
+      ],
+      "description": "Review (4), agentkey findings, Medium cli.mjs:136: \"Expiry is judged at verify time, so a rotation retroactively expires every old artefact; --at turns it back ... needs a trusted timestamp.\" Base 173282c: no match for timestamp, integratedTime or rfc3161; verifyWith(envelope, trust, at = Date.now()) (src/cli.mjs:119) judges not_after against the verify-time clock or --at. verifyWith judges not_after against a trusted signing time when the envelope carries one: a Sigstore bundle beside it whose verified timestamp (Rekor integratedTime or an RFC 3161 token) @sigstore/verify checks. Without one, the time is the verifier's clock as now. --at stays but is reported as an assertion by the verifier, never as a trusted time; verify --json gains time: {value, source: rekor | rfc3161 | clock | asserted}. A rotation's not_after then expires only what was signed after it. Revocation is unchanged: a revoked key fails at any time. @sigstore/verify moves from devDependencies to optionalDependencies, loaded on first use; without it an envelope that carries a bundle exits 2 AGENTKEY_SIGSTORE_UNAVAILABLE and is never judged by the clock in silence. The timestamped fixtures come from a real Rekor or TSA response recorded once, with its source named; a timestamp agentkey makes for itself does not count.",
+      "scope": {
+        "allow": [
+          "src/**",
+          "test/**",
+          "package.json",
+          "package-lock.json",
+          "README.md",
+          "docs/**",
+          "CHANGELOG.md"
+        ]
+      },
+      "criteria": [
+        {
+          "id": "AK-R10-AC01",
+          "mandatory": true,
+          "statement": "signed and timestamped before not_after verifies after it; without the timestamp exits 2 expired; a timestamp after not_after exits 2; a bundle whose timestamp does not verify exits 1; --at is reported as source asserted; a revoked key fails whatever the time",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/trusted_time.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-R10-AC02",
+          "mandatory": true,
+          "statement": "@sigstore/verify is optional, not dev-only",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c 'node -e \"const p=require(\\\"./package.json\\\");process.exit(p.optionalDependencies&&p.optionalDependencies[\\\"@sigstore/verify\\\"]&&!(p.devDependencies||{})[\\\"@sigstore/verify\\\"]?0:1)\"'",
+            "expect_exit": 0,
+            "timeout_s": 60
+          }
+        },
+        {
+          "id": "AK-R10-AC03",
+          "mandatory": true,
+          "statement": "suite green",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-R10-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-R10-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
+        "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
+      ]
     }
   ],
-  "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent."
+  "notes": [
+    "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent.",
+    "|",
+    "2",
+    "0",
+    "2",
+    "6",
+    "1",
+    "0",
+    "1",
+    "7",
+    ":",
+    "8",
+    "(",
+    "V",
+    "R",
+    "A",
+    "G",
+    "g",
+    ")",
+    "S",
+    "A",
+    "0",
+    "0",
+    ",",
+    "G",
+    "A"
+  ]
 }
