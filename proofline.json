@@ -2459,7 +2459,94 @@
         "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
         "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
       ]
+    },
+    {
+      "id": "AK-REL011R",
+      "title": "docs/releases.md records 0.1.1",
+      "phase": "release",
+      "owner": "lane-a",
+      "depends_on": [
+        "AK-REL011"
+      ],
+      "requirements": [
+        "ID-07",
+        "RF-07",
+        "ZR-12"
+      ],
+      "scope": {
+        "allow": [
+          "docs/releases.md"
+        ]
+      },
+      "description": "docs/releases.md records 0.1.0 only; hivevault HV-12 compares the 0.1.1 integrity npm reports against it. Add a section \"## @optitransfer/agentkey@0.1.1\" in the 0.1.0 section's shape: published 2026-10-17T15:02:08.746Z by the optitransfer npm account, tag latest; commit 59eb63ce860234a44d5ba01ef1e6b9d2cc1875a7; tarball optitransfer-agentkey-0.1.1.tgz at https://registry.npmjs.org/@optitransfer/agentkey/-/agentkey-0.1.1.tgz; shasum a4f629974f43deab2a64966d545d300ba4172a1c; integrity sha512-09+MOpbtsQULWj+GaTxV+WrF2M9QgQ49BEBWw7sJnMe/t8fgYkC2S4T89qOEwFjhKSFUb/Tj4i0BBFoGjpRpXA==. State what was measured: the owner published from his terminal with npm 10.9.2 on node 23.7.0 (the registry's record); the 13 files in the registry tarball are byte-identical to that commit; npm pack under npm 10.9.0 gives another shasum for the same files, because the gzip differs between npm versions. No provenance (a hand publish with two-factor approval). Nothing else changes.",
+      "criteria": [
+        {
+          "id": "AK-REL011R-AC01",
+          "mandatory": true,
+          "statement": "docs/releases.md has a 0.1.1 section",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/releases.md",
+            "pattern": "^## @optitransfer/agentkey@0\\.1\\.1$",
+            "must": "present",
+            "flags": "m"
+          }
+        },
+        {
+          "id": "AK-REL011R-AC02",
+          "mandatory": true,
+          "statement": "it records the integrity the registry serves for 0.1.1",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/releases.md",
+            "pattern": "sha512-09\\+MOpbtsQULWj\\+GaTxV\\+WrF2M9QgQ49BEBWw7sJnMe/t8fgYkC2S4T89qOEwFjhKSFUb/Tj4i0BBFoGjpRpXA==",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-REL011R-AC03",
+          "mandatory": true,
+          "statement": "it records the commit the tarball was built from",
+          "verifier": {
+            "type": "grep",
+            "file": "docs/releases.md",
+            "pattern": "59eb63ce860234a44d5ba01ef1e6b9d2cc1875a7",
+            "must": "present"
+          }
+        },
+        {
+          "id": "AK-REL011R-AC04",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-REL011R-AC05",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-REL011R-AC06",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
+      ]
     }
   ],
-  "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. | 2026-10-17: 8 review tasks appended (COVERAGE.md maps every finding and open issue). Scope criterion added to AK-00, DG-AK so the contract passes its own validator. | 2026-10-17: AK-PEER appended (the owner's HV-12 decision): agentkey 0.1.1 makes @sigstore/sign an optional peer dependency, so a plain install fetches no Sigstore package. | 2026-10-17: AK-REL011 appended (the owner published 0.1.1): the changelog dates the release."
+  "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. | 2026-10-17: 8 review tasks appended (COVERAGE.md maps every finding and open issue). Scope criterion added to AK-00, DG-AK so the contract passes its own validator. | 2026-10-17: AK-PEER appended (the owner's HV-12 decision): agentkey 0.1.1 makes @sigstore/sign an optional peer dependency, so a plain install fetches no Sigstore package. | 2026-10-17: AK-REL011 appended (the owner published 0.1.1): the changelog dates the release. | 2026-10-17: AK-REL011R appended: docs/releases.md records 0.1.1, which hivevault HV-12 compares against."
 }
