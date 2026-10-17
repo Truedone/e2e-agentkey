@@ -1,13 +1,12 @@
 // the agentkey command line: init, list, pub, sign, verify, bind, setup and revoke, each with --json. Exit codes: 0 ok, 1 a
 // signature failed to verify, 2 an unknown, revoked or expired key or missing input, 3 usage
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AgentkeyError, home, keyPaths, kid, generate, load, signDSSE, verifyDSSE } from './index.mjs';
+import { AgentkeyError, home, keyPaths, kid, generate, load, loadPublic, signDSSE, verifyDSSE } from './index.mjs';
 import { bind } from './bind.mjs';
 import { setup } from './setup.mjs';
-import { agentAdd, agentSigner } from './agent.mjs';
+import { agentAdd, agentHeld, agentSigner } from './agent.mjs';
 import { rotate, rotationsIn } from './rotate.mjs';
 
 export const EXIT = { ok: 0, failed: 1, key: 2, usage: 3 };
@@ -155,16 +154,17 @@ const readStdin = (io) => {
 };
 
 // the roles that have a key under <home>/keys, with the kid of each .pub; on win32 a %XX in a name is decoded back
-function listKeys(h, platform) {
+function listKeys(h, platform, opts) {
   const dir = path.join(h, 'keys');
   if (!fs.existsSync(dir)) return [];
   return walk(dir, '.key').map((f) => {
     let role = path.relative(dir, f).slice(0, -'.key'.length).split(path.sep).join('/');
     if (platform === 'win32') role = role.replace(/%([0-9A-F]{2})/g, (_, x) => String.fromCharCode(parseInt(x, 16)));
-    const pub = `${f.slice(0, -'.key'.length)}.pub`;
-    let id = null;
-    try { id = kid(fs.readFileSync(pub, 'utf8')); } catch { /* a key without a readable .pub is listed with kid null */ }
-    return { role, kid: id };
+    // the kid is the .key's own (loadPublic); a .pub beside it that names another kid is listed as a conflict
+    try { return { role, kid: loadPublic(role, { ...opts, home: h }).kid }; } catch (e) {
+      if (e.code === 'AGENTKEY_CONFLICT') return { role, kid: null, conflict: e.message };
+      return { role, kid: null };   // a key that does not load is listed with kid null, as before
+    }
   });
 }
 
@@ -184,22 +184,19 @@ const commands = {
   list(a, ctx) {
     if (a._.length) throw usage('list takes no arguments');
     const h = ctx.opts.home ?? home({ env: ctx.env });
-    const keys = listKeys(h, ctx.platform);
+    const keys = listKeys(h, ctx.platform, ctx.opts);
     const revoked = [...readRevoked(path.join(h, 'keys', 'revoked.txt'))].map(([k, date]) => ({ kid: k, date }));
-    const text = [...keys.map((k) => `${k.kid ?? '-'} ${k.role}`), ...revoked.map((r) => `${r.kid} revoked ${r.date ?? ''}`.trimEnd())].join('\n');
-    return { result: { ok: true, keys, revoked }, text };
+    const text = [...keys.map((k) => `${k.kid ?? '-'} ${k.role}${k.conflict ? ' CONFLICT' : ''}`), ...revoked.map((r) => `${r.kid} revoked ${r.date ?? ''}`.trimEnd())].join('\n');
+    const conflicts = keys.filter((k) => k.conflict);
+    // every role is listed; a conflict then makes the run exit 2 (reason conflict), naming each role
+    if (conflicts.length) (ctx.io.stderr ?? ((t) => process.stderr.write(t)))(conflicts.map((k) => `agentkey: ${k.conflict}\n`).join(''));
+    return { result: { ok: !conflicts.length, ...(conflicts.length ? { reason: 'conflict' } : {}), keys, revoked }, text, exit: conflicts.length ? EXIT.key : EXIT.ok };
   },
   pub(a, ctx) {
     if (a._.length !== 1) throw usage('pub takes one role');
     const role = a._[0];
-    const p = keyPaths(role, ctx.opts);
-    let pem;
-    try { pem = fs.readFileSync(p.pub, 'utf8'); } catch (e) {
-      if (e.code === 'ENOENT') throw new Exit(EXIT.key, 'missing', `no public key for role ${role} at ${p.pub}`);
-      throw e;
-    }
-    const pk = crypto.createPublicKey(pem);
-    return { result: { ok: true, role, kid: kid(pk), publicKey: pk.export({ format: 'jwk' }).x, pem }, text: pem.trimEnd() };
+    const k = loadPublic(role, { ...ctx.opts, held: agentHeld(role, { env: ctx.env }) });
+    return { result: { ok: true, role, kid: k.kid, publicKey: k.publicKey, pem: k.pem }, text: k.pem.trimEnd() };
   },
   sign(a, ctx) {
     if (a._.length !== 1) throw usage('sign takes one role');
@@ -232,7 +229,7 @@ const commands = {
     if (a._.length !== 1) throw usage('bind takes one role');
     if (!a.principal) throw usage('bind needs --principal <id>, the identity your allowed_signers line names');
     const sshKey = a['ssh-key'] ?? path.join(ctx.env.HOME || os.homedir(), '.ssh', 'id_ed25519');
-    const b = bind(a._[0], sshKey, a.principal, ctx.opts);
+    const b = bind(a._[0], sshKey, a.principal, { ...ctx.opts, held: agentHeld(a._[0], { env: ctx.env }) });
     return { result: { ok: true, role: b.role, kid: b.kid, principal: b.principal, sshKey, sig: b.sig, principalFile: b.principalFile }, text: `${b.kid} ${b.role} bound to ${b.principal}` };
   },
   // init, bind and the receiver's trust files in one step; every prerequisite is checked before anything is written
@@ -262,11 +259,8 @@ const commands = {
     const role = a._[0];
     const p = keyPaths(role, ctx.opts);
     const h = ctx.opts.home ?? home({ env: ctx.env });
-    let id;
-    try { id = kid(fs.readFileSync(p.pub, 'utf8')); } catch (e) {
-      if (e.code === 'ENOENT') throw new Exit(EXIT.key, 'missing', `no key for role ${role} at ${p.pub}`);
-      throw e;
-    }
+    // the kid revoked is the role's own (loadPublic): a .pub copied from another role never gets that role revoked
+    const id = loadPublic(role, { ...ctx.opts, held: agentHeld(role, { env: ctx.env }) }).kid;
     const date = new Date(ctx.now ?? Date.now()).toISOString();
     const list = path.join(h, 'keys', 'revoked.txt');
     const fd = fs.openSync(list, 'a', 0o644);

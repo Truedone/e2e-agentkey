@@ -8,11 +8,12 @@ import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { AgentkeyError, keyPaths, kid, load } from './index.mjs';
+import { AgentkeyError, keyPaths, load, loadPublic } from './index.mjs';
 
 const IO = fileURLToPath(new URL('./agent-io.mjs', import.meta.url));
 const SSH_AGENT_FAILURE = 5, SSH_AGENT_SUCCESS = 6, SSH2_AGENTC_SIGN_REQUEST = 13, SSH2_AGENT_SIGN_RESPONSE = 14;
 const SSH2_AGENTC_ADD_ID_CONSTRAINED = 25, SSH_AGENT_CONSTRAIN_CONFIRM = 2;
+const SSH2_AGENTC_REQUEST_IDENTITIES = 11, SSH2_AGENT_IDENTITIES_ANSWER = 12;
 // a signature waits for a person to confirm it; two minutes, then the request is given up
 const CONFIRM_TIMEOUT_MS = 120_000;
 
@@ -57,15 +58,11 @@ export function agentAdd(role, { env = process.env, remove = false, ...opts } = 
 // key's signature is refused rather than passed on
 export function agentSigner(role, { env = process.env, ...opts } = {}) {
   const socket = socketOf(env);
-  const p = keyPaths(role, { env, ...opts });
-  let pem;
-  try { pem = fs.readFileSync(p.pub, 'utf8'); } catch (e) {
-    if (e.code === 'ENOENT') throw new AgentkeyError('AGENTKEY_MISSING', `no public key for role ${role} at ${p.pub}`);
-    throw e;
-  }
-  const pk = crypto.createPublicKey(pem);
-  const publicKey = pk.export({ format: 'jwk' }).x;
-  const id = kid(publicKey);
+  // the key the agent is asked for: derived from the role's .key while it is on disk, else the .pub, accepted only
+  // when the agent holds that key under this role's name (loadPublic refuses a .pub copied from another role)
+  const own = loadPublic(role, { env, ...opts, held: agentHeld(role, { env }) });
+  const pk = crypto.createPublicKey(own.pem);
+  const { publicKey, kid: id } = own;
   return {
     role, kid: id, publicKey, signer: 'ssh-agent',
     sign(data) {
@@ -80,5 +77,25 @@ export function agentSigner(role, { env = process.env, ...opts } = {}) {
       }
       return sig;
     },
+  };
+}
+
+// the check loadPublic makes for a role whose .key was moved into the agent: the agent on SSH_AUTH_SOCK holds the
+// key, under the comment agentAdd gave it ("agentkey <role> <kid>"). A key the agent holds for another role is
+// AGENTKEY_CONFLICT; a key it does not hold is AGENTKEY_AGENT_REFUSED. Nothing is signed and nothing is asked
+export function agentHeld(role, { env = process.env } = {}) {
+  return (publicKey, id) => {
+    const [type, body] = exchange(socketOf(env), Buffer.from([SSH2_AGENTC_REQUEST_IDENTITIES]), 10_000);
+    if (type !== SSH2_AGENT_IDENTITIES_ANSWER) throw new AgentkeyError('AGENTKEY_AGENT_REFUSED', `ssh-agent answered ${type} to a request for its keys`);
+    const want = keyBlob(publicKey);
+    let at = 4;
+    for (let n = body.readUInt32BE(0); n > 0; n--) {
+      let blob, comment; [blob, at] = readStr(body, at); [comment, at] = readStr(body, at);
+      if (!blob.equals(want)) continue;
+      const c = comment.toString('utf8');
+      if (c === `agentkey ${role} ${id}`) return true;
+      throw new AgentkeyError('AGENTKEY_CONFLICT', `the agent holds ${id} as "${c}", not for role ${role}; the role's .pub names another role's key, and nothing was signed`);
+    }
+    throw new AgentkeyError('AGENTKEY_AGENT_REFUSED', `ssh-agent does not hold role ${role}'s key ${id} (its .key is not on disk either); agent-add ${role} adds it`);
   };
 }

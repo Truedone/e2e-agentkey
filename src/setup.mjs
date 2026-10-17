@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AgentkeyError, home, keyPaths, kid, generate, load } from './index.mjs';
+import { AgentkeyError, home, keyPaths, kid, generate, loadPublic, readTrustedPub } from './index.mjs';
 import { NAMESPACE, bind, verifyBinding, checkPrincipal } from './bind.mjs';
 
 const TIMEOUT_MS = 10_000;
@@ -104,18 +104,18 @@ export function setup(role, { principal, sshKey, trust = 'trust', env = process.
   const rel = path.relative(path.join(h, 'keys'), p.pub);
   const t = { pub: path.join(trust, rel), sig: path.join(trust, `${rel}.sshsig`), who: path.join(trust, `${rel}.principal`), allowed: path.join(trust, 'allowed_signers') };
   for (const f of [t.pub, t.sig, t.who, t.allowed]) checkDestination(f);
-  const have = fs.existsSync(p.pub) ? fs.readFileSync(p.pub, 'utf8') : null;
-  if (have) {
-    // a public key with no private key, or with another key's, would pass here and fail at the first signature
-    let mine;
-    try { mine = load(role, { env, ...opts }); } catch (e) {
+  // a public key with no private key, or with another key's, would pass here and fail at the first signature:
+  // loadPublic derives the role's key from its .key and refuses a .pub that names another kid
+  let have = null;
+  if (fs.existsSync(p.pub)) {
+    try { have = loadPublic(role, { env, ...opts }).pem; } catch (e) {
       if (e.code === 'AGENTKEY_MISSING') throw new AgentkeyError('AGENTKEY_MISSING', `role ${role} has a public key at ${p.pub} and no private key at ${p.key}; setup does not make a key beside a public key it would not match`);
       throw e;
     }
-    if (mine.kid !== kid(have)) throw new AgentkeyError('AGENTKEY_CONFLICT', `${p.key} holds ${mine.kid}, but ${p.pub} is ${kid(have)}; the pair does not match`);
   }
   // the receiver's <role>.pub, PEM or the raw base64url form, compared by kid
-  const theirs = fs.existsSync(t.pub) ? kid(fs.readFileSync(t.pub, 'utf8').trim()) : null;
+  const trusted = readTrustedPub(t.pub);
+  const theirs = trusted === null ? null : kid(trusted.trim());
   if (!have && theirs) {
     throw new AgentkeyError('AGENTKEY_CONFLICT', `${t.pub} holds ${theirs}, a key for role ${role} this machine does not have; it is never replaced`);
   }

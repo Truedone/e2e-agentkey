@@ -184,6 +184,40 @@ export function load(role, opts = {}) {
   return { role, kid: kid(privateKey), publicKey: rawPublicKey(privateKey).toString('base64url'), privateKey };
 }
 
+// the role's public key, from the one source that cannot name another key: { role, kid, publicKey (base64url), pem
+// (SPKI), source }. With a <role>.key it is derived from the key, which load() opens with its checks, and a <role>.pub
+// beside it that names another kid is refused with AGENTKEY_CONFLICT (a .pub copied over another role's would
+// otherwise make pub export, revoke revoke and bind vouch for the other key). With no .key the role's key was moved
+// into ssh-agent (agent-add --remove): the .pub names the key and opts.held(publicKey, kid) decides it, true when the
+// agent holds that key for this role; with no opts.held the .pub alone is not trusted and the result is AGENTKEY_MISSING
+export function loadPublic(role, opts = {}) {
+  const p = keyPaths(role, opts);
+  const pem = readPub(p.pub);
+  if (fs.existsSync(p.key) || isLink(p.key)) {
+    const k = load(role, opts);
+    if (pem !== null && kid(pem) !== k.kid) {
+      throw new AgentkeyError('AGENTKEY_CONFLICT', `${p.pub} is ${kid(pem)}, but ${p.key} holds ${k.kid}; the pair does not match, and nothing was changed`);
+    }
+    return { role, kid: k.kid, publicKey: k.publicKey, pem: crypto.createPublicKey(k.privateKey).export({ type: 'spki', format: 'pem' }), source: 'key' };
+  }
+  if (pem === null) throw new AgentkeyError('AGENTKEY_MISSING', `no key for role ${role} at ${p.key}; generate(role) creates one`);
+  const publicKey = rawPublicKey(pem).toString('base64url'), id = kid(publicKey);
+  if (typeof opts.held !== 'function') {
+    throw new AgentkeyError('AGENTKEY_MISSING', `no private key for role ${role} at ${p.key}; ${p.pub} (${id}) alone is not trusted: a key moved into ssh-agent is checked against the agent`);
+  }
+  opts.held(publicKey, id);   // throws AGENTKEY_CONFLICT or AGENTKEY_AGENT_* when the agent does not hold it for this role
+  return { role, kid: id, publicKey, pem: crypto.createPublicKey(pem).export({ type: 'spki', format: 'pem' }), source: 'ssh-agent' };
+}
+
+// a public key file in a trust directory (a receiver's copy, which has no private key beside it): its PEM, or null
+// when there is none. Named so that the role's own keys are read through loadPublic and nothing else
+export function readTrustedPub(file) { return readPub(file); }
+
+function readPub(file) {
+  try { return fs.readFileSync(file, 'utf8'); } catch (e) { if (e.code === 'ENOENT') return null; throw e; }
+}
+function isLink(file) { try { return fs.lstatSync(file).isSymbolicLink(); } catch { return false; } }
+
 // DSSE (github.com/secure-systems-lab/dsse, protocol.md): the bytes a signature covers are
 // PAE(type, body) = "DSSEv1" SP LEN(type) SP type SP LEN(body) SP body, LEN being the byte length in ASCII decimal
 const asBytes = (x, what) => {

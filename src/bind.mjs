@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AgentkeyError, keyPaths, kid } from './index.mjs';
+import { AgentkeyError, keyPaths, kid, loadPublic } from './index.mjs';
 
 export const NAMESPACE = 'agentkey';
 
@@ -47,11 +47,8 @@ export function checkPrincipal(principal) {
 export function bind(role, sshKeyPath, principal, opts = {}) {
   checkPrincipal(principal);
   const p = keyPaths(role, opts);
-  let pem;
-  try { pem = fs.readFileSync(p.pub, 'utf8'); } catch (e) {
-    if (e.code === 'ENOENT') throw new AgentkeyError('AGENTKEY_MISSING', `no key for role ${role} at ${p.pub}; generate(role) creates one`);
-    throw e;
-  }
+  // the key vouched for is the role's own (loadPublic), never a .pub copied from another role
+  const pem = loadPublic(role, opts).pem;
   if (!fs.existsSync(sshKeyPath)) throw new AgentkeyError('AGENTKEY_MISSING', `no SSH key at ${sshKeyPath}`);
   const r = sshKeygen(['-Y', 'sign', '-n', NAMESPACE, '-f', sshKeyPath], bindingMessage(pem));
   if (!r.ok) throw new AgentkeyError('AGENTKEY_SSH', `ssh-keygen -Y sign failed (exit ${r.status}): ${r.err}`);

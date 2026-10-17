@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A role's public key has one source, `loadPublic(role)`: derived from the role's `.key`, and a `.pub` beside it that names another key is refused with `AGENTKEY_CONFLICT`. `pub`, `list`, `revoke`, `bind` and the ssh-agent signer read it, so a `.pub` copied over another role's no longer makes `pub` export, `revoke` revoke or `bind` vouch for the other key; `list` lists such a role with a conflict and exits 2. For a role whose `.key` was moved into ssh-agent (`agent-add --remove`), the `.pub` is accepted only when the agent holds that key under the comment `agentkey <role> <kid>`, so `pub`, `revoke` and `bind` of such a role now need the agent running. `readTrustedPub(file)` reads a trust directory's copy, which has no private key beside it. (AK-R01)
 - `package-lock.json` is committed (lockfile version 3), so a checkout installs the dependency tree recorded at that commit and the gate builds each commit's dependencies from the commit itself. npm does not publish the lockfile, so installing `@optitransfer/agentkey` still pulls no required dependency. (AK-LOCK)
 
 ## 0.1.0 (2026-10-16)
