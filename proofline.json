@@ -2318,7 +2318,71 @@
         "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, raising a timeout, widening the scope or editing the contract: STOP and report file:line and the measured value.",
         "If the environment a criterion needs is missing (repository admin, npm owner login, Actions, a second machine): report BLOCKED naming the missing item; never mark it passed by hand."
       ]
+    },
+    {
+      "id": "AK-PEER",
+      "title": "A plain install fetches no Sigstore package; keyless signing works once @sigstore/sign is installed",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [],
+      "requirements": [
+        "ID-05"
+      ],
+      "scope": {
+        "allow": [
+          "package.json",
+          "package-lock.json",
+          "src/**",
+          "test/**",
+          "README.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "description": "Owner decision of 2026-10-17 for HV-12 (option (b)): agentkey 0.1.1. package.json moves @sigstore/sign 3.1.0 from optionalDependencies to peerDependencies, with peerDependenciesMeta { \"@sigstore/sign\": { \"optional\": true } }, so npm does not install it on its own. It is also added to devDependencies at 3.1.0, so agentkey's own suite and its lockfile keep it: @sigstore/verify does not bring it, and the keyless tests (sigstore_absent.test.mjs, the interop test) need it installed. dependencies and optionalDependencies are empty, and the version is 0.1.1. package-lock.json is regenerated to match in the same commit (npm install --package-lock-only --ignore-scripts, empty user config); because @sigstore/sign is a devDependency it keeps node_modules/@sigstore/sign with integrity, so AK-LOCK-AC02's check holds. signKeyless keeps its lazy load and AGENTKEY_SIGSTORE_UNAVAILABLE; the message names the command that adds it (npm install @sigstore/sign@3.1.0). README.md:220 and the comment at src/sigstore.mjs:2-3 say 'optional peer dependency' and give that command. CHANGELOG has an Unreleased line. Red on base: the manifest has the optional dependency, and the install fetches @sigstore/sign. The test installs with --prefer-offline, not --offline: npm skips an optional dependency that fails to fetch, so an offline install would leave the directory empty on base and the red would be false. AK-06-VER-AC01 greps package.json for \"version\": \"0.1.0\", which stops matching at 0.1.1. That is expected: 0.1.0 is the released version that task recorded, the CHANGELOG heading AK-06-VER-AC02 checks stays, and a later re-verify of AK-06-VER that fails only that grep is not a regression. The npm release of 0.1.1 is the owner's step, and HV-12's re-pin to 0.1.1 follows it.",
+      "criteria": [
+        {
+          "id": "AK-PEER-AC01",
+          "mandatory": true,
+          "statement": "the package declares no dependency or optional dependency and @sigstore/sign as an optional peer; installing the packed tarball into a scratch project (npm install --prefer-offline --ignore-scripts) leaves no node_modules/@sigstore; after npm install @sigstore/sign@3.1.0 into that project, signKeyless called with no identityToken throws exactly AGENTKEY_SIGSTORE_NO_TOKEN, in a child whose env has SIGSTORE_ID_TOKEN, ACTIONS_ID_TOKEN_REQUEST_URL and ACTIONS_ID_TOKEN_REQUEST_TOKEN removed, so it stops at src/sigstore.mjs:21-27 before anything is sent, on any runner including CI. The test makes its own empty npm user config file and passes it to both installs as NPM_CONFIG_USERCONFIG, never the home one, and gives each install its own timeout",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/peer_sigstore.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "AK-PEER-AC02",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-PEER-AC03",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-PEER-AC04",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
+      ]
     }
   ],
-  "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. | 2026-10-17: 8 review tasks appended (COVERAGE.md maps every finding and open issue). Scope criterion added to AK-00, DG-AK so the contract passes its own validator."
+  "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. | 2026-10-17: 8 review tasks appended (COVERAGE.md maps every finding and open issue). Scope criterion added to AK-00, DG-AK so the contract passes its own validator. | 2026-10-17: AK-PEER appended (the owner's HV-12 decision): agentkey 0.1.1 makes @sigstore/sign an optional peer dependency, so a plain install fetches no Sigstore package."
 }
