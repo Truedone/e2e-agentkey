@@ -1,6 +1,7 @@
 // keyless signing with Sigstore: a short-lived Fulcio certificate for the CI job's OIDC identity signs the DSSE
-// envelope, and Rekor records it. @sigstore/sign is an optional dependency, loaded on the first call, so the rest of
-// agentkey never needs it; without it signKeyless throws AGENTKEY_SIGSTORE_UNAVAILABLE
+// envelope, and Rekor records it. @sigstore/sign is an optional peer dependency, loaded on the first call, so a plain
+// install of agentkey fetches no Sigstore package and the rest of agentkey never needs it; without it signKeyless throws
+// AGENTKEY_SIGSTORE_UNAVAILABLE (npm install @sigstore/sign@3.1.0 adds it)
 import { AgentkeyError } from './index.mjs';
 
 const MISSING = new Set(['ERR_MODULE_NOT_FOUND', 'MODULE_NOT_FOUND']);
@@ -8,7 +9,7 @@ async function optional(name) {
   // @sigstore/* are CommonJS: the namespace's default is the exports object, whose names may not all be lifted
   let m;
   try { m = await import(name); } catch (e) {
-    if (MISSING.has(e?.code)) throw new AgentkeyError('AGENTKEY_SIGSTORE_UNAVAILABLE', `keyless signing needs the optional dependency ${name}, which is not installed (npm install ${name})`);
+    if (MISSING.has(e?.code)) throw new AgentkeyError('AGENTKEY_SIGSTORE_UNAVAILABLE', `keyless signing needs ${name}, which is not installed: it comes with @sigstore/sign, an optional peer dependency of agentkey (npm install @sigstore/sign@3.1.0)`);
     throw e;
   }
   return m.default && typeof m.default === 'object' ? { ...m.default, ...m } : m;

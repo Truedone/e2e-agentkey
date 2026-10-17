@@ -1,6 +1,6 @@
 {
   "name": "@optitransfer/agentkey",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "One Ed25519 key per agent role, DSSE envelopes and in-toto Statements, with no runtime dependencies.",
   "license": "Apache-2.0",
   "type": "module",
@@ -11,11 +11,15 @@
   "scripts": {
     "test": "node --test test/*.test.mjs"
   },
-  "optionalDependencies": {
+  "peerDependencies": {
     "@sigstore/sign": "3.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@sigstore/sign": { "optional": true }
   },
   "devDependencies": {
     "@sigstore/bundle": "3.1.0",
+    "@sigstore/sign": "3.1.0",
     "@sigstore/verify": "2.1.1"
   },
   "repository": { "type": "git", "url": "git+https://github.com/mgillr/agentkey.git" }
