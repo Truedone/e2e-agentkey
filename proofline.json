@@ -1565,7 +1565,7 @@
         "RV-AK1",
         "RVI-AK-F03"
       ],
-      "description": "Review 17 Oct, High 3 (earlier issue (b), not fixed). Add loadPublic(role) in src/index.mjs that opens .key with the existing O_NOFOLLOW/0600 checks, derives the public key, and throws AGENTKEY_CONFLICT when the .pub on disk differs. Replace every direct read of a role's own .pub: agent.mjs:62, bind.mjs:51, cli.mjs:197 (pub), cli.mjs:266 (revoke), setup.mjs:107. setup.mjs:118 reads the trust directory's copy (t.pub), which has no .key to derive from; it goes through a named readTrustedPub() and is not a loadPublic call. Test: copy B.pub over A.pub, then pub/list/revoke/bind/agent-sign A each exit with AGENTKEY_CONFLICT and change nothing.",
+      "description": "Review 17 Oct, High 3 (earlier issue (b), not fixed). Add loadPublic(role) in src/index.mjs that opens .key with the existing O_NOFOLLOW/0600 checks, derives the public key, and throws AGENTKEY_CONFLICT when the .pub on disk differs. With no .key (moved into the agent), the agent's identity comment names the role. Replace every direct read of a role's own .pub: agent.mjs:62, bind.mjs:51, cli.mjs:166 (list), cli.mjs:197 (pub), cli.mjs:266 (revoke), setup.mjs:107. setup.mjs:118 reads the trust directory's copy (t.pub), which has no .key to derive from; it goes through a named readTrustedPub() and is not a loadPublic call. Test: copy B.pub over A.pub, then pub/list/revoke/bind/agent-sign A each exit with AGENTKEY_CONFLICT and change nothing.",
       "scope": {
         "allow": [
           "src/**",
@@ -2320,32 +2320,5 @@
       ]
     }
   ],
-  "notes": [
-    "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent.",
-    "|",
-    "2",
-    "0",
-    "2",
-    "6",
-    "1",
-    "0",
-    "1",
-    "7",
-    ":",
-    "8",
-    "(",
-    "V",
-    "R",
-    "A",
-    "G",
-    "g",
-    ")",
-    "S",
-    "A",
-    "0",
-    "0",
-    ",",
-    "G",
-    "A"
-  ]
+  "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. | 2026-10-17: 8 review tasks appended (COVERAGE.md maps every finding and open issue). Scope criterion added to AK-00, DG-AK so the contract passes its own validator."
 }
