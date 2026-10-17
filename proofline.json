@@ -1468,6 +1468,76 @@
         "If a criterion cannot pass without weakening a rule, widening a bypass list, or signing with a key that is not the owner's: STOP and report. Never mark a boundary criterion passed by hand.",
         "If the environment a criterion needs is missing (repository admin, the owner key, a container runtime, OIDC): report BLOCKED with the exact missing item."
       ]
+    },
+    {
+      "id": "AK-LOCK",
+      "title": "agentkey commits its lockfile",
+      "phase": "implement",
+      "owner": "lane-b",
+      "depends_on": [],
+      "requirements": [
+        "TB-R02"
+      ],
+      "scope": {
+        "allow": [
+          "package-lock.json",
+          "CHANGELOG.md"
+        ]
+      },
+      "description": "Owner decision of 2026-10-16 (23:05Z): agentkey, hivevault and proofline commit package-lock.json, so the programme's gate builds each commit's dependencies from the commit itself (proofline PL-17). Measured the same day: the pre-push hook's bare worktree could not resolve @sigstore/bundle, @sigstore/verify (dev dependencies) or @sigstore/sign (optional), and agentkey 0c30640 was refused for it (proofline issue 36). The lockfile is made with `npm install --package-lock-only --ignore-scripts` (lockfileVersion 3) and committed with a changelog line. npm never publishes a package's package-lock.json, so @optitransfer/agentkey still has no required dependency for anyone installing it.",
+      "criteria": [
+        {
+          "id": "AK-LOCK-AC01",
+          "mandatory": true,
+          "statement": "the lockfile is committed",
+          "verifier": {
+            "type": "file_exists",
+            "path": "package-lock.json"
+          }
+        },
+        {
+          "id": "AK-LOCK-AC02",
+          "mandatory": true,
+          "statement": "it is lockfile version 3, lists the sigstore packages with integrity, and installs cleanly",
+          "verifier": {
+            "type": "command",
+            "cmd": "sh -c \"node -e \\\"const l=require('./package-lock.json');const ok=l.lockfileVersion===3&&['node_modules/@sigstore/bundle','node_modules/@sigstore/verify','node_modules/@sigstore/sign'].every(k=>l.packages[k]&&l.packages[k].integrity);process.exit(ok?0:1)\\\" && npm ci --ignore-scripts --no-audit --no-fund\"",
+            "expect_exit": 0,
+            "timeout_s": 900
+          }
+        },
+        {
+          "id": "AK-LOCK-AC03",
+          "mandatory": true,
+          "statement": "Full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 1800
+          }
+        },
+        {
+          "id": "AK-LOCK-AC04",
+          "mandatory": true,
+          "statement": "Changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        },
+        {
+          "id": "AK-LOCK-AC05",
+          "mandatory": true,
+          "statement": "Committed and pushed to main",
+          "verifier": {
+            "type": "pushed"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
+        "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
+      ]
     }
   ],
   "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent."
