@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `package-lock.json` is committed (lockfile version 3), so a checkout installs the dependency tree recorded at that commit and the gate builds each commit's dependencies from the commit itself. npm does not publish the lockfile, so installing `@optitransfer/agentkey` still pulls no required dependency. (AK-LOCK)
+
 ## 0.1.0 (2026-10-16)
 
 - `AGENTKEY_SIGNER=ssh-agent` and `agentkey agent-add <role> [--remove]`: the role key goes into ssh-agent with the confirm constraint (as `ssh-add -c`), written on the agent socket so no OpenSSH key file is made, and with `--remove` the key file is deleted; signing then goes through the agent, each signature waits for a person's confirmation, and the agent's signature is checked against the role's public key before it is used. `sign --json` reports `signer: file | ssh-agent`; `agentSigner(role)` gives the same signer to `signDSSE`. (TB-05)
