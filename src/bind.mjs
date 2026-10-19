@@ -11,7 +11,8 @@ import { AgentkeyError, keyPaths, kid, loadPublic } from './index.mjs';
 
 export const NAMESPACE = 'agentkey';
 
-// what the human signs: the agent public key as the base64url of its 32 raw bytes and a newline, the form
+// what the human signs: the agent public key as the base64url of its 32 raw bytes and a newline, and the
+// string form accepts surrounding whitespace, which is trimmed before the shape check. The form
 // `agentkey pub <role> --json` gives as publicKey, so the binding does not depend on how the .pub file is written
 export function bindingMessage(publicKey) {
   let k = publicKey;
