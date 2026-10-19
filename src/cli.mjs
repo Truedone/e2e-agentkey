@@ -55,9 +55,16 @@ function parse(args) {
   return out;
 }
 
-// an ISO 8601 date or date-time as epoch ms, or null
+// an ISO 8601 date (2030-01-01) or date-time (2030-01-01T00:00, with seconds, a fraction, and Z or an offset such as
+// +02:00 when given) as epoch ms, or null. The whole string must be one, and the day must exist: Date.parse alone reads
+// 2026-02-30 as 2 March and 2026-02-28junk as a day in June, which would move a key's not_after without a word
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(Z|[+-](\d{2}):(\d{2}))?)?$/;
 const iso = (s) => {
-  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(s)) return null;
+  const m = typeof s === 'string' ? ISO_DATE.exec(s) : null;
+  if (!m) return null;
+  const [, y, mo, d, h = '0', mi = '0', sec = '0', , oh = '0', om = '0'] = m;
+  const days = new Date(Date.UTC(2000 + (+y % 400), +mo, 0)).getUTCDate();   // the month's length; leap years repeat every 400
+  if (+mo < 1 || +mo > 12 || +d < 1 || +d > days || +h > 23 || +mi > 59 || +sec > 59 || +oh > 23 || +om > 59) return null;
   const t = Date.parse(s);
   return Number.isNaN(t) ? null : t;
 };
