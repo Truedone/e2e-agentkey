@@ -2546,6 +2546,66 @@
         "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
         "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
       ]
+    },
+    {
+      "id": "SPK3-DIGEST",
+      "title": "statement() refuses a subject whose digest is not a map of algorithm names to lowercase hex",
+      "phase": "implement",
+      "depends_on": [],
+      "requirements": [],
+      "scope": {
+        "allow": [
+          "src/index.mjs",
+          "test/statement_digest.test.mjs",
+          "proofline.json"
+        ]
+      },
+      "description": "statement() in src/index.mjs checks a subject's digest with typeof === 'object', so a digest of null throws a TypeError from Object.keys and an array passes as a map. in-toto's DigestSet is a map from an algorithm name to the digest in lowercase hex. A digest that is null, an array, empty, or holds a value that is not a lowercase hex string is refused with AGENTKEY_INVALID, as every other bad subject is.",
+      "criteria": [
+        {
+          "id": "SPK3-DIGEST-AC01",
+          "mandatory": true,
+          "statement": "a digest of null, an array, a string or an empty map is refused with AGENTKEY_INVALID",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/statement_digest.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "SPK3-DIGEST-AC02",
+          "mandatory": true,
+          "statement": "a digest value that is not lowercase hex is refused with AGENTKEY_INVALID",
+          "verifier": {
+            "type": "command",
+            "cmd": "node --input-type=module -e \"import { statement } from './src/index.mjs'; for (const v of ['AB', 'xyz', 42, '']) { try { statement([{ name: 'a', digest: { sha256: v } }], 'https://example.com/p/v1', {}); process.exit(1); } catch (e) { if (e.code !== 'AGENTKEY_INVALID') process.exit(1); } }\"",
+            "expect_exit": 0,
+            "timeout_s": 60
+          }
+        },
+        {
+          "id": "SPK3-DIGEST-AC03",
+          "mandatory": true,
+          "statement": "the full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 600
+          }
+        },
+        {
+          "id": "SPK3-DIGEST-AC04",
+          "mandatory": true,
+          "statement": "changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, or widening the scope: STOP and report file:line and the measured value."
+      ]
     }
   ],
   "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. | 2026-10-17: 8 review tasks appended (COVERAGE.md maps every finding and open issue). Scope criterion added to AK-00, DG-AK so the contract passes its own validator. | 2026-10-17: AK-PEER appended (the owner's HV-12 decision): agentkey 0.1.1 makes @sigstore/sign an optional peer dependency, so a plain install fetches no Sigstore package. | 2026-10-17: AK-REL011 appended (the owner published 0.1.1): the changelog dates the release. | 2026-10-17: AK-REL011R appended: docs/releases.md records 0.1.1, which hivevault HV-12 compares against."

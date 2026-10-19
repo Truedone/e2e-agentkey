@@ -312,8 +312,11 @@ export function verifyDSSE(envelope, keys) {
 
 // an in-toto Statement v1 (github.com/in-toto/attestation, spec/v1/statement.md); each subject names its artifact
 // with a digest map, such as { name: 'pkg.tgz', digest: { sha256: '...' } }
+// a digest that is null or an array is no digest map: typeof null is 'object', and Object.keys of null threw a TypeError
+// where every other bad subject gets AGENTKEY_INVALID
+const isDigestMap = (d) => d !== null && typeof d === 'object' && !Array.isArray(d) && Object.keys(d).length > 0;
 export function statement(subjects, predicateType, predicate) {
-  if (!Array.isArray(subjects) || !subjects.length || subjects.some((s) => !s || typeof s.digest !== 'object' || !Object.keys(s.digest).length)) {
+  if (!Array.isArray(subjects) || !subjects.length || subjects.some((s) => !s || !isDigestMap(s.digest))) {
     throw new AgentkeyError('AGENTKEY_INVALID', 'a Statement has at least one subject, each with a non-empty digest map');
   }
   if (typeof predicateType !== 'string' || !predicateType) throw new AgentkeyError('AGENTKEY_INVALID', 'predicateType is a URI string');
