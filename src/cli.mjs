@@ -55,10 +55,13 @@ function parse(args) {
   return out;
 }
 
-// an ISO 8601 date or date-time as epoch ms, or null
+// an ISO 8601 date or date-time as epoch ms, or null. Date.parse alone rolls a day past the month's end into the next
+// month (2026-02-30 is 2 March), which moved a key's not_after later; such a day is read as the month's last day
 const iso = (s) => {
   if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(s)) return null;
-  const t = Date.parse(s);
+  const [y, m, d] = s.slice(0, 10).split('-').map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const t = Date.parse(d > last ? `${s.slice(0, 8)}${String(last).padStart(2, '0')}${s.slice(10)}` : s);
   return Number.isNaN(t) ? null : t;
 };
 
