@@ -16,6 +16,7 @@ export const NAMESPACE = 'agentkey';
 export function bindingMessage(publicKey) {
   let k = publicKey;
   if (typeof k === 'string' && k.includes('-----BEGIN')) k = crypto.createPublicKey(k);
+  if (typeof k === 'string') k = k.trim();
   if (k instanceof crypto.KeyObject) k = k.export({ format: 'jwk' }).x;
   if (typeof k !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(k)) throw new AgentkeyError('AGENTKEY_INVALID', 'a binding is over an Ed25519 public key: PEM, a KeyObject or its base64url');
   kid(k);

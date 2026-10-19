@@ -52,6 +52,12 @@ test('a bound key verifies against the allowed_signers file; a key with no signa
   assert.equal(u.kid.startsWith('k'), true);
 });
 
+test('bindingMessage trims whitespace around a pasted key (e2e proven-fix case)', (t) => {
+  const { d, h, human } = setup(t);
+  const pem = fs.readFileSync(`${human.key}.pub`, 'utf8');
+  assert.deepEqual(bindingMessage(`${pem}\n`), bindingMessage(pem));
+});
+
 test('a tampered signature, another principal, a key the file does not allow and a swapped agent key are invalid', (t) => {
   const { d, h, human, allowed } = setup(t);
   generate('claude-code', { home: h });
