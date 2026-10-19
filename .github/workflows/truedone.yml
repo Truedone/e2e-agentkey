@@ -1,0 +1,19 @@
+# The project's own install and test, then the truedone gate pinned at
+# Truedone/truedone main (E2E-01): the gate runs the project's tests on the
+# pull request's base and head and labels the verdict.
+name: truedone
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm test
+      - uses: Truedone/truedone/packages/action@54f15b0bc2a90c05af0aa4a2aedfcb7b2b0703ee
