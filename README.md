@@ -1,6 +1,6 @@
 # agentkey
 
-**One key per AI agent role. Every artefact the agent signs says which role made it, on which machine, bound to which person.**
+**One key per AI agent role. Every artifact the agent signs says which role made it, on which machine, bound to which person.**
 
 Coding agents act under a person's accounts: they commit as you, open pull requests as you, write files as you. When something turns out wrong, nothing in the record says which agent did it, whether it ran on your machine, or whether a person stood behind it. agentkey gives each agent role on a machine its own Ed25519 key, signs what the agent produces as a DSSE envelope or an in-toto Statement, verifies those signatures offline against a directory of trusted keys with revocation and expiry, and binds the role's key to the person's SSH key so the chain ends at a human. No runtime dependencies (`node:crypto`; keyless Sigstore signing uses the optional `@sigstore/sign`), Node 22+, Apache-2.0.
 
@@ -75,13 +75,13 @@ npx @optitransfer/agentkey@next setup claude-code --principal you@example.com   
 
 `agentkey setup` creates the role's key if there is none, binds it with your SSH key (`~/.ssh/id_ed25519`, or `--ssh-key <path>`), and writes into `./trust` (or `--trust <dir>`) the four files a receiver needs: the role's public key, its binding (`.pub.sshsig`, `.pub.principal`) and your `allowed_signers` line. It checks everything before it writes anything, so a missing SSH key, an `ssh-keygen` older than OpenSSH 8.0 or a trust directory it cannot write stops it with the missing piece named and nothing created. It never replaces a key or a binding, and running it again changes nothing. A passphrase-protected SSH key needs `ssh-add` first, or a terminal to type the passphrase on; without either it stops at once rather than wait on a prompt. It prints the one line the agent signs with; `--json` prints `{ role, kid, principal, trust, sign }`.
 
-What the signature does not prove: that the agent did good work. It proves who produced the artefact and that nobody changed it afterwards. Judging the work is what Proofline does, and it uses these signatures to say which agent its receipts are about.
+What the signature does not prove: that the agent did good work. It proves who produced the artifact and that nobody changed it afterwards. Judging the work is what Proofline does, and it uses these signatures to say which agent its receipts are about.
 
 ## Why
 
-A signature from a shared account proves nothing about who acted. A key per agent role fixes the unit of accountability at the role on a machine: `claude-code` on your laptop is one key, `claude-code` in CI is another, a review role a third. The key never leaves the machine, is never replaced by accident (`init` on an existing role reports its key and never replaces it), and is refused by `load` when its file mode is wrong. Revocation is a line in the trusted keys directory's `revoked.txt` (`agentkey revoke` writes it into `keys/` on the signing machine; a receiver adds the line to its own); expiry is a date in the key record; both are checked at verification time, so a stolen or retired key stops verifying without touching the artefacts it signed.
+A signature from a shared account proves nothing about who acted. A key per agent role fixes the unit of accountability at the role on a machine: `claude-code` on your laptop is one key, `claude-code` in CI is another, a review role a third. The key never leaves the machine, is never replaced by accident (`init` on an existing role reports its key and never replaces it), and is refused by `load` when its file mode is wrong. Revocation is a line in the trusted keys directory's `revoked.txt` (`agentkey revoke` writes it into `keys/` on the signing machine; a receiver adds the line to its own); expiry is a date in the key record; both are checked at verification time, so a stolen or retired key stops verifying without touching the artifacts it signed.
 
-The envelope is the standard one: DSSE with the in-toto Statement v1 inside, so the same artefact verifies with agentkey, with the sigstore verifier (`@sigstore/verify`, tested in `test/interop.test.mjs`), or with any DSSE verifier, and a receipt produced by [proofline](https://github.com/mgillr/proofline) or any other tool can carry it. The binding to a person uses OpenSSH's own signature format (`ssh-keygen -Y`), so it is checked with tools everyone has.
+The envelope is the standard one: DSSE with the in-toto Statement v1 inside, so the same artifact verifies with agentkey, with the sigstore verifier (`@sigstore/verify`, tested in `test/interop.test.mjs`), or with any DSSE verifier, and a receipt produced by [proofline](https://github.com/mgillr/proofline) or any other tool can carry it. The binding to a person uses OpenSSH's own signature format (`ssh-keygen -Y`), so it is checked with tools everyone has.
 
 ## What a signature proves
 
