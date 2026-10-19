@@ -2546,6 +2546,66 @@
         "If a criterion cannot pass without loosening a threshold, removing or skipping a test, raising a timeout or widening the scope: STOP and report the file:line, the mechanism and the measured value; the next task is not started.",
         "If the environment a criterion needs is missing (gh auth, a test repository, OIDC, cosign): report BLOCKED with the exact missing item; never mark the criterion passed by hand and never skip it."
       ]
+    },
+    {
+      "id": "SPK3-ISO",
+      "title": "verify refuses a not_after or --at that is not a real day",
+      "phase": "implement",
+      "depends_on": [],
+      "requirements": [],
+      "scope": {
+        "allow": [
+          "src/cli.mjs",
+          "test/iso_dates.test.mjs",
+          "proofline.json"
+        ]
+      },
+      "description": "src/cli.mjs reads a key record's not_after and verify --at with Date.parse after a prefix check, so 2026-02-30 is read as 2 March and 2026-02-28junk as a day in June: a typo moves a key's expiry with no error. A value that is not a whole ISO 8601 date or date-time, or names a day that does not exist, is refused: --at as a usage error (exit 3), not_after as an unreadable key record (exit 2, reason keys). Dates, date-times in UTC or with an offset, leap days and fractions of a second still verify.",
+      "criteria": [
+        {
+          "id": "SPK3-ISO-AC01",
+          "mandatory": true,
+          "statement": "a day that does not exist, or trailing text, is refused in --at and in not_after, and real dates still verify",
+          "verifier": {
+            "type": "test_red_green",
+            "test_file": "test/iso_dates.test.mjs",
+            "cmd": "node --test {test}"
+          }
+        },
+        {
+          "id": "SPK3-ISO-AC02",
+          "mandatory": true,
+          "statement": "verify --at 2026-02-30 is a usage error, exit 3",
+          "verifier": {
+            "type": "command",
+            "cmd": "node bin/agentkey.mjs verify --keys . --at 2026-02-30 < /dev/null; test $? -eq 3",
+            "expect_exit": 0,
+            "timeout_s": 60
+          }
+        },
+        {
+          "id": "SPK3-ISO-AC03",
+          "mandatory": true,
+          "statement": "the full suite exits 0, nothing hung",
+          "verifier": {
+            "type": "command",
+            "cmd": "npm test",
+            "expect_exit": 0,
+            "timeout_s": 600
+          }
+        },
+        {
+          "id": "SPK3-ISO-AC04",
+          "mandatory": true,
+          "statement": "changes stay in scope",
+          "verifier": {
+            "type": "scope"
+          }
+        }
+      ],
+      "stop_rules": [
+        "If a criterion cannot pass without loosening a threshold, skipping or deleting a test, or widening the scope: STOP and report file:line and the measured value."
+      ]
     }
   ],
   "notes": "Each task carries the requirement ids it covers; next --owner hands out the tasks of one owner. Cross-repository needs are written into task text as an external dependency and reported BLOCKED when absent. | 2026-10-17: 8 review tasks appended (COVERAGE.md maps every finding and open issue). Scope criterion added to AK-00, DG-AK so the contract passes its own validator. | 2026-10-17: AK-PEER appended (the owner's HV-12 decision): agentkey 0.1.1 makes @sigstore/sign an optional peer dependency, so a plain install fetches no Sigstore package. | 2026-10-17: AK-REL011 appended (the owner published 0.1.1): the changelog dates the release. | 2026-10-17: AK-REL011R appended: docs/releases.md records 0.1.1, which hivevault HV-12 compares against."
