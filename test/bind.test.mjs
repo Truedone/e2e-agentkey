@@ -52,6 +52,13 @@ test('a bound key verifies against the allowed_signers file; a key with no signa
   assert.equal(u.kid.startsWith('k'), true);
 });
 
+test('bindingMessage reads a PEM file and the generated key alike (e2e test-only case)', (t) => {
+  const { d, h, human } = setup(t);
+  const g = generate('claude-code', { home: h });
+  const pub = keyPaths('claude-code', { home: h }).pub;
+  assert.deepEqual(bindingMessage(fs.readFileSync(pub, 'utf8')), Buffer.from(`${g.publicKey}\n`));
+});
+
 test('a tampered signature, another principal, a key the file does not allow and a swapped agent key are invalid', (t) => {
   const { d, h, human, allowed } = setup(t);
   generate('claude-code', { home: h });
